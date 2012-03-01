@@ -115,24 +115,44 @@ expr (BinOpExpr op e1 e2) = do
          (castTyp argType e2'')
          resType
          
-expr (UnqualCall fName args) = 
-  expr =<< QualCall <$> tagPos CurrentVar <*> pure fName <*> pure args
+expr (UnqualCall fName args) = do
+  qual <- QualCall <$> tagPos CurrentVar 
+                   <*> pure fName 
+                   <*> pure args
+  expr qual
   
 expr (QualCall trg fName args) = do 
+  -- typecheck and cast the target if from a generic class
   trgUncasted <- typeOfExpr trg
-  tTrg <- castTarget trgUncasted fName
-  let t        = T.texpr tTrg
-      realArgs = castGenericArgsM t fName =<< mapM typeOfExpr args
-      resultT  = featureResult <$> (fName `inClass` t :: Typing FeatureEx)
-      call     = (validCall t fName args) *>
-                 (castResult t fName =<< tagPos =<< 
-                  T.Call tTrg fName <$> realArgs <*> resultT)
-  maybe call castAccess =<< convertVarCall fName tTrg
+  tTrg        <- castTarget trgUncasted fName
+  let t = T.texpr tTrg
   
+  -- see if the call is valid wth the args proposed
+  validCall t fName args
+  
+  -- typecheck and cast the arguments if they come from a generic class
+  args'   <- mapM typeOfExpr args
+  genArgs <- castGenericArgsM t fName args'
+  
+  -- fetch the actual result, make a new call from it,
+  -- then cast the result if necessary
+  resultT <- featureResult <$> (fName `inClass` t :: Typing FeatureEx)
+  tCall <- tagPos (T.Call tTrg fName genArgs resultT)
+  let castedCall = castResult t fName tCall
+  
+  -- See if this qualified call is actually a class access, and
+  -- either cast it to an access if it is one, or just return the
+  -- fully casted call AST if it's really a call
+  accessMb <- convertVarCall fName tTrg
+  case accessMb of
+    Just acc -> castAccess acc
+    Nothing  -> castedCall
+
 expr (Cast t e) = T.Cast t `fmap` typeOfExpr e >>= tagPos
 
--- expr e          = error ("expr: unimplemented : " ++ show e)
 
+-- A call is valid if its arguments all typecheck and conform to the
+-- formals, and the name exists in the class.
 validCall :: Typ -> String -> [Expr] -> Typing ()
 validCall t fName args = join (argsConform <$> argTypes <*> formTypes)
     where instFDecl = fName `inClass` t
@@ -187,7 +207,8 @@ castAccess a = case contents a of
 formalArgTypes :: RoutineI -> [Typ]
 formalArgTypes = map declType . routineArgs
 
--- | Checks that a list of args conform to a list of types.
+-- | Checks that a list of args conform to a list of types. Raises an error
+-- if the check fails.
 argsConform :: [TExpr]       -- ^ List of typed expressions
                -> [Typ]      -- ^ List of types that the argument list should
                              --   conform to.

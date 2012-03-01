@@ -116,27 +116,6 @@ inClass' lookupC fName t = do
   maybeThrow (findFeature ci fName) $ "No Feature Found: " ++ fName
 
 
--- attrInClass :: String -> Typ -> Typing (Attribute Expr)
--- attrInClass = attrInClass' resolveIFace
-
--- attrInGenClass :: String -> Typ -> Typing (Attribute Expr)
--- attrInGenClass = attrInClass' lookupClass
-
--- attrInClass' :: (Typ -> Typing ClasInterface) -> String 
---                 -> Typ -> Typing (Attribute Expr)
--- attrInClass' lookupC fName t = do
---   ci   <- lookupC t
---   maybeThrow (findAttrInt ci fName) $ "No Attribute Found: " ++ fName
-
--- -- routineInClass' :: (Typ -> Typing ClasInterface) -> String -> Typ -> Typing a
-
-
--- routineInClass' :: (Typ -> Typing ClasInterface) 
---                    -> String -> Typ -> Typing RoutineI
--- routineInClass' lookupC fName t = do
---   ci   <- lookupC t
---   maybeThrow (findFeatureInt ci fName) $ "No Feature Found: " ++ fName
-
 conformThrow :: TExpr -> Typ -> Typing TExpr
 conformThrow expr t = do
   r <- conforms (T.texpr expr) t
