@@ -97,5 +97,5 @@ addDeclsToMap = union . declsToMap
 addDecls :: [Decl] -> TypeContext -> TypeContext
 addDecls ds ctx = ctx {variables = addDeclsToMap ds (variables ctx)}
 
-setResult :: Feature -> TypeContext -> TypeContext
+setResult :: Routine -> TypeContext -> TypeContext
 setResult f tc = tc {result = featureResult f}

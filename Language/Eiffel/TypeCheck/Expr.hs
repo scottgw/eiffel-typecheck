@@ -1,5 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
-module Language.Eiffel.TypeCheck.Expr (clause, typeOfExpr, convertVarCall) where
+{-# LANGUAGE FlexibleContexts #-}
+
+module Language.Eiffel.TypeCheck.Expr where
 
 import Control.Applicative
 import Control.Monad.Error
@@ -43,8 +45,8 @@ asAccess trg ci vc =
     let dec = findAttrInt ci vc
     in liftA2 (T.Access trg) (declName <$> dec) (declType <$> dec)
 
-asCall trg ci vc = do f <- findFeatureInt ci vc
-                      guard (null (featureArgs f)) *>
+asCall trg ci vc = do f <- findRoutineInt ci vc
+                      guard (null (routineArgs f)) *>
                         pure (T.Call trg (featureName f) [] (featureResult f))
 
 typeOfExpr :: Expr -> Typing TExpr
@@ -132,7 +134,7 @@ expr (Cast t e) = T.Cast t `fmap` typeOfExpr e >>= tagPos
 
 validCall :: Typ -> String -> [Expr] -> Typing ()
 validCall t fName args = join (argsConform <$> argTypes <*> formTypes)
-    where instFDecl = fName `inClassGen` t
+    where instFDecl = fName `inClass` t
           formTypes = formalArgTypes <$> instFDecl
           argTypes  = mapM typeOfExpr args
 
@@ -144,16 +146,22 @@ castTarget :: TExpr            -- ^ The target expression
 castTarget trg fname =
   maybe (throwError $ "castTarget error " ++ show (trg, fname)) return =<< castTargetM trg fname
 
--- | 'castTargetM' takes an expression and a feature name, possibly returning
+-- | Takes an expression and a feature name, possibly returning
 -- the expression casted to the parent which contains the feature.
 castTargetM :: TExpr                    -- ^ The target expression
                -> String                -- ^ Feature to search for
                -> Typing (Maybe TExpr)  -- ^ Possibly casted target
-castTargetM trg fname = fmap ($ trg) <$> castTargetWith (T.texpr trg) fname id
+castTargetM trg fname = do
+  castMb <- castTargetWith (T.texpr trg) fname id
+  return (castMb >>= \cast -> return (cast trg))
 
--- |'castTargetWith' goes up the list of parents to find where a feature comes
+-- | Goes up the list of parents to find where a feature comes
 -- from, and may produce a function that will take an expression of the 
 -- target type to the parent that contains the desired feature.
+--
+-- This is used to both determine if a feature is available in a class,
+-- and if so to return the cast to the parent class that contains it. The
+-- cast is useful for code generation.
 castTargetWith :: Typ                  -- ^ The target type
                   -> String            -- ^ The feature name
                   -> (TExpr -> TExpr)  -- ^ The cast so far
@@ -169,41 +177,58 @@ castTargetWith t fname cast = do
       castsMb <- mapM inheritCast (map inheritClass (inherit ci))
       return (listToMaybe $ catMaybes castsMb)
 
--- | 
+-- | If the target expr is an attribute access then lookup then possibly
+-- cast or unbox the result in the case where the originating class is generic.
 castAccess :: TExpr -> Typing TExpr
 castAccess a = case contents a of
                  T.Access ta aName _ -> castAttr (T.texpr ta) aName a
                  _ -> return a
 
-formalArgTypes :: FeatureI -> [Typ]
-formalArgTypes = map declType . featureArgs
+formalArgTypes :: RoutineI -> [Typ]
+formalArgTypes = map declType . routineArgs
 
-argsConform :: [TExpr] -> [Typ] -> Typing ()
+-- | Checks that a list of args conform to a list of types.
+argsConform :: [TExpr]       -- ^ List of typed expressions
+               -> [Typ]      -- ^ List of types that the argument list should
+                             --   conform to.
+               -> Typing ()
 argsConform args formArgs
     | length args /= length formArgs = throwError "Differing number of args"
     | otherwise = zipWithM_ conformThrow args formArgs
 
+-- | Casts the return value of a function. If the yare the same,
+-- there's no cast, but if one is a generic
+castReturnedValue :: Typ      -- ^ Instantiated type
+                     -> Typ   -- ^ Generic type
+                     -> TExpr -- ^ Expression of instantiated type
+                     -> TExpr -- ^ Possibly casted or boxed expression.
+castReturnedValue instanceTyp genericTyp
+    | instanceTyp == genericTyp  = id
+    | isBasic instanceTyp        = inheritPos (T.Unbox instanceTyp)
+    | otherwise                  = inheritPos (T.Cast instanceTyp)
+
+
+-- | Casts the result of an attribute lookup, if necessary.
+-- This assumes that the 
 castAttr :: Typ -> String -> TExpr -> Typing TExpr
-castAttr t a e = 
-  castReturnedValue <$> (declType <$> attrInClassGen a t)
-                    <*> (declType <$> attrInClass a t)
-                    <*> (pure e)
+castAttr = castFeatureResult (declType . attrDecl)
 
 castResult :: Typ -> String -> TExpr -> Typing TExpr
-castResult t f r = 
-  castReturnedValue <$> (featureResult <$> inClassGen f t)
-                    <*> (featureResult <$> inClass f t)
-                    <*> (pure r)
+castResult = castFeatureResult routineResult
 
-castReturnedValue :: Typ -> Typ -> TExpr -> TExpr
-castReturnedValue instTyp typ
-    | instTyp == typ  = id
-    | isBasic instTyp = inheritPos (T.Unbox instTyp)
-    | otherwise       = inheritPos (T.Cast instTyp)
+castFeatureResult :: ClassFeature a EmptyBody Expr =>
+                     (a -> Typ) -> 
+                     Typ -> String -> TExpr -> Typing TExpr
+castFeatureResult res targetType featureName expr =
+  castReturnedValue <$> (res <$> inClass featureName targetType)
+                    <*> (res <$> inGenClass featureName targetType)
+                    <*> pure expr
+  
+
 
 castGenericArgsM :: Typ -> String -> [TExpr] -> Typing [TExpr]
 castGenericArgsM t fname args =
-  zipWith castToStatic args <$> featureArgs <$> fname `inClass` t
+  zipWith castToStatic args <$> routineArgs <$> fname `inClass` t
 
 castToStatic :: TExpr -> Decl -> TExpr
 castToStatic te (Decl _ t@(ClassType _ _))

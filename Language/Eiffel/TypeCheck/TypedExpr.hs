@@ -10,7 +10,7 @@ import Language.Eiffel.Stmt
 import Language.Eiffel.Position
 
 type TClass = ClasBody TExpr
-type TFeature = FeatureWithBody TExpr
+type TRoutine = RoutineWithBody TExpr
 type TStmt = PosAbsStmt TExpr
 type UnPosTStmt = AbsStmt TExpr
 
@@ -47,14 +47,14 @@ untypeContract (Contract inherit clauses) =
 untypeConstant (Constant froz decl expr) = 
   Constant froz decl (untypeExpr expr)
 
-untypeFeat :: TFeature -> Feature
-untypeFeat tfeat = tfeat { featureImpl = untypeImpl (featureImpl tfeat)
-                         , featureReq  = untypeContract (featureReq tfeat)
-                         , featureEns  = untypeContract (featureEns tfeat)
+untypeFeat :: TRoutine -> Routine
+untypeFeat tfeat = tfeat { routineImpl = untypeImpl (routineImpl tfeat)
+                         , routineReq  = untypeContract (routineReq tfeat)
+                         , routineEns  = untypeContract (routineEns tfeat)
                          }
 
-untypeImpl :: FeatureBody TExpr -> FeatureBody Expr
-untypeImpl body = body {featureBody = untypeStmt (featureBody body)}
+untypeImpl :: RoutineBody TExpr -> RoutineBody Expr
+untypeImpl body = body {routineBody = untypeStmt (routineBody body)}
 
 untypeStmt :: TStmt -> Stmt
 untypeStmt = fmap untypeStmt'
@@ -91,17 +91,17 @@ untypeExpr' (Cast t e)
     = E.Cast t (untypeExpr e)
 untypeExpr' (ResultVar _t)
     = E.ResultVar
-           -- | BinOpExpr BinOp TExpr TExpr Typ
-           -- | UnOpExpr UnOp TExpr Typ
-           -- | Attached ClassName TExpr String
-           -- | Box Typ TExpr
-           -- | Unbox Typ TExpr
-           -- | LitChar Char
-           -- | LitString String
-           -- | LitInt Int
-           -- | LitBool Bool
-           -- | LitVoid Typ
-           -- | LitDouble Double deriving (Show, Eq)
+           --- | BinOpExpr BinOp TExpr TExpr Typ
+           --- | UnOpExpr UnOp TExpr Typ
+           --- | Attached ClassName TExpr String
+           --- | Box Typ TExpr
+           --- | Unbox Typ TExpr
+           --- | LitChar Char
+           --- | LitString String
+           --- | LitInt Int
+           --- | LitBool Bool
+           --- | LitVoid Typ
+           --- | LitDouble Double deriving (Show, Eq)
 untypeExpr' s = error $ show s      
 
 texpr :: TExpr -> Typ

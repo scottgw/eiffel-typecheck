@@ -46,13 +46,13 @@ updateGenerics ts ci =
 updateGeneric :: GenUpd ClasInterface 
 updateGeneric g t = 
   classMapAttributes (updateAttribute g t) . 
-  classMapFeatures (updateFeatDecl g t)
+  classMapRoutines (updateFeatDecl g t)
 
-updateFeatDecl :: GenUpd FeatureI
+updateFeatDecl :: GenUpd RoutineI
 updateFeatDecl g t fd = 
     fd 
-    { featureArgs = map (updateDecl g t) (featureArgs fd)
-    , featureResult = updateTyp g t (featureResult fd)
+    { routineArgs = map (updateDecl g t) (routineArgs fd)
+    , routineResult = updateTyp g t (routineResult fd)
     }
 
 updateAttribute g t a = a {attrDecl = updateDecl g t (attrDecl a)}

@@ -2,11 +2,13 @@
 
 module Util.Monad where
 
+import Control.Applicative
 import Control.Monad.Reader
 
 import Data.Map
 
 import Language.Eiffel.Class
+import Language.Eiffel.Expr
 import Language.Eiffel.Feature
 import Language.Eiffel.Typ
 import Language.Eiffel.Decl
@@ -29,14 +31,19 @@ lookupClass :: ClassReader r m => Typ -> m ClasInterface
 lookupClass t = liftM (maybe (error $ "lookupClas: can't find " ++ show t) id) 
                 (lookupClassM t)
 
-lookupAttrM :: ClassReader r m => Typ -> String -> m (Maybe Decl)
+
+lookupFeatureM typ name = do
+  clas <- lookupClassM typ
+  return (findFeatureInt <$> clas <*> pure name)
+
+lookupAttrM :: ClassReader r m => Typ -> String -> m (Maybe (Attribute Expr))
 lookupAttrM t name = do
   c <- lookupClassM t
   return (do
            c' <- c
            findAttrInt c' name)
 
-lookupAttr :: ClassReader r m => Typ -> String -> m Decl
+lookupAttr :: ClassReader r m => Typ -> String -> m (Attribute Expr)
 lookupAttr t name 
     = liftM (maybe 
              (error $ "lookupAttr: can't fine " ++ show t ++ "." ++ name)
@@ -44,17 +51,17 @@ lookupAttr t name
       (lookupAttrM t name)
 
 
-lookupFeatureM :: ClassReader r m => Typ -> String -> m (Maybe FeatureI)
-lookupFeatureM t name = do
+lookupRoutineM :: ClassReader r m => Typ -> String -> m (Maybe RoutineI)
+lookupRoutineM t name = do
   c <- lookupClassM t
   return (do
            c' <- c
-           findFeatureInt c' name)
+           findRoutineInt c' name)
 
-lookupFeature :: ClassReader r m => Typ -> String -> m FeatureI
-lookupFeature t name 
+lookupRoutine :: ClassReader r m => Typ -> String -> m RoutineI
+lookupRoutine t name 
     = liftM (maybe 
-             (error $ "lookupFeature: can't fine " ++ show t ++ "." ++ name)
+             (error $ "lookupRoutine: can't fine " ++ show t ++ "." ++ name)
              id)
-      (lookupFeatureM t name)
+      (lookupRoutineM t name)
             

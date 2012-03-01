@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Language.Eiffel.TypeCheck.BasicTypes where
 
 import Control.Applicative
@@ -98,23 +100,36 @@ biTyper op lf rf resTyp t1 t2 = do
   guardThrow (rf t2) $ "Second type is wrong " ++ show op ++ " got " ++ show t2
   return (resTyp, liftNum t1 t2)
 
-inClassGen, inClass :: String -> Typ -> Typing FeatureI
-inClassGen = inClass' resolveIFace
-inClass    = inClass' lookupClass
+inClass, inGenClass :: ClassFeature a EmptyBody Expr => 
+ String -> Typ -> Typing a
+inClass = inClass' resolveIFace
+inGenClass    = inClass' lookupClass
 
-attrInClassGen, attrInClass :: String -> Typ -> Typing Decl
-attrInClassGen = attrInClass' resolveIFace
-attrInClass    = attrInClass' lookupClass
-
-attrInClass' :: (Typ -> Typing ClasInterface) -> String -> Typ -> Typing Decl
-attrInClass' lookupC fName t = do
-  ci   <- lookupC t
-  maybeThrow (findAttrInt ci fName) $ "No Attribute Found: " ++ fName
-
-inClass' :: (Typ -> Typing ClasInterface) -> String -> Typ -> Typing FeatureI
 inClass' lookupC fName t = do
   ci   <- lookupC t
   maybeThrow (findFeatureInt ci fName) $ "No Feature Found: " ++ fName
+
+
+-- attrInClass :: String -> Typ -> Typing (Attribute Expr)
+-- attrInClass = attrInClass' resolveIFace
+
+-- attrInGenClass :: String -> Typ -> Typing (Attribute Expr)
+-- attrInGenClass = attrInClass' lookupClass
+
+-- attrInClass' :: (Typ -> Typing ClasInterface) -> String 
+--                 -> Typ -> Typing (Attribute Expr)
+-- attrInClass' lookupC fName t = do
+--   ci   <- lookupC t
+--   maybeThrow (findAttrInt ci fName) $ "No Attribute Found: " ++ fName
+
+-- -- routineInClass' :: (Typ -> Typing ClasInterface) -> String -> Typ -> Typing a
+
+
+-- routineInClass' :: (Typ -> Typing ClasInterface) 
+--                    -> String -> Typ -> Typing RoutineI
+-- routineInClass' lookupC fName t = do
+--   ci   <- lookupC t
+--   maybeThrow (findFeatureInt ci fName) $ "No Feature Found: " ++ fName
 
 conformThrow :: TExpr -> Typ -> Typing TExpr
 conformThrow expr t = do
