@@ -13,7 +13,6 @@ import Language.Eiffel.Eiffel
 
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 import Language.Eiffel.TypeCheck.TypedExpr (TExpr)
-
 import Language.Eiffel.TypeCheck.BasicTypes
 import Language.Eiffel.TypeCheck.Context
 import Language.Eiffel.TypeCheck.Generic
@@ -30,9 +29,8 @@ convertVarCall vc trg = do
   p <- currentPos
   case trgM of
     Nothing -> 
-        do
-          vTyp <- typeOfVar vc
-          return (attachPos p <$> (T.Var vc <$> vTyp))
+      do vTyp <- typeOfVar vc
+         return (attachPos p <$> (T.Var vc <$> vTyp))
     Just trg' -> compCall vc trg' p <$> resolveIFace (T.texpr trg')
            
 
@@ -41,14 +39,19 @@ compCall vc trg p ci =
     attachPos p <$> (asAccess trg ci vc <|> 
                      asCall trg ci vc)
 
+-- | Possibly construct a target/name pair as attribute-access.
+asAccess :: TExpr -> ClasInterface -> String -> Maybe T.UnPosTExpr
 asAccess trg ci vc = 
     let dec = attrDecl <$> findAttrInt ci vc
     in T.Access trg <$> (declName <$> dec) 
                     <*> (declType <$> dec)
 
-asCall trg ci vc = do f <- findRoutineInt ci vc
-                      guard (null (routineArgs f)) *>
-                        pure (T.Call trg (featureName f) [] (featureResult f))
+-- | Possibly construct a target/name pair as a call (with no arguments)
+asCall :: TExpr -> ClasInterface -> String -> Maybe T.UnPosTExpr
+asCall trg ci vc = do 
+  f <- findRoutineInt ci vc
+  guard (null (routineArgs f))
+  return (T.Call trg (featureName f) [] (featureResult f))
 
 typeOfExpr :: Expr -> Typing TExpr
 typeOfExpr e = setPosition (position e) (expr (contents e))
@@ -61,26 +64,25 @@ typeOfExprIs typ expr = do
 
 
 binOpArgCasts e1 e2 
-    | isBasic t1 && isBasic t2 = return (e1,e2)
-    | otherwise = 
-        do
-          cast1M <- conforms t1 t2
-          case cast1M of
-            Just cast1 -> return (cast1 e1, e2)
-            Nothing -> 
-                do
-                  cast2M <- conforms t2 t1
-                  case cast2M of
-                    Just cast2 -> return (e1, cast2 e2)
-                    Nothing -> throwError $ "binOpArgCasts: " ++ 
-                               show (e1,e2)
+  | isBasic t1 && isBasic t2 = return (e1,e2)
+  | otherwise = 
+    do cast1M <- conforms t1 t2
+       cast2M <- conforms t2 t1
+       
+       -- if one type can be casted to another, then apply the first
+       -- cast that's possible.
+       let tupMb = (cast1M >>= \ c -> return (c e1, e2)) <|> 
+                   (cast2M >>= \ c -> return (e1, c e2))
+       
+       -- return the tuple with the proper cast, or throw an error
+       -- if neither are possible
+       maybe (throwError $ "binOpArgCasts: " ++ show (e1,e2)) return tupMb
     where 
       t1 =  T.texprTyp (contents e1)
       t2 =  T.texprTyp (contents e2)
                                        
 
 expr :: UnPosExpr -> Typing TExpr
-
 expr (LitInt i)    = tagPos (T.LitInt i)
 expr (LitDouble d) = tagPos (T.LitDouble d)
 expr (LitBool b)   = tagPos (T.LitBool b)
@@ -123,35 +125,36 @@ expr (UnqualCall fName args) = do
   
 expr (QualCall trg fName args) = do 
   -- typecheck and cast the target if from a generic class
+  p <- currentPos
   trgUncasted <- typeOfExpr trg
   tTrg        <- castTarget trgUncasted fName
   let t = T.texpr tTrg
   
-  -- see if the call is valid wth the args proposed
-  validCall t fName args
-  
-  -- typecheck and cast the arguments if they come from a generic class
-  args'   <- mapM typeOfExpr args
-  genArgs <- castGenericArgsM t fName args'
-  
-  -- fetch the actual result, make a new call from it,
-  -- then cast the result if necessary
-  resultT <- featureResult <$> (fName `inClass` t :: Typing FeatureEx)
-  tCall <- tagPos (T.Call tTrg fName genArgs resultT)
-  let castedCall = castResult t fName tCall
-  
   -- See if this qualified call is actually a class access, and
   -- either cast it to an access if it is one, or just return the
   -- fully casted call AST if it's really a call
-  accessMb <- convertVarCall fName tTrg
+  accessMb <- compCall fName tTrg p <$> resolveIFace (T.texpr tTrg)
   case accessMb of
     Just acc -> castAccess acc
-    Nothing  -> castedCall
+    Nothing  -> do 
+      -- see if the call is valid wth the args proposed
+      validCall t fName args
+  
+      -- typecheck and cast the arguments if they come from a generic class
+      args'   <- mapM typeOfExpr args
+      genArgs <- castGenericArgsM t fName args'
+  
+      -- fetch the actual result, make a new call from it,
+      -- then cast the result if necessary
+      resultT <- featureResult <$> (fName `inClass` t :: Typing FeatureEx)
+      tCall <- tagPos (T.Call tTrg fName genArgs resultT)
+      castResult t fName tCall
+  
 
 expr (Cast t e) = T.Cast t `fmap` typeOfExpr e >>= tagPos
 
 
--- A call is valid if its arguments all typecheck and conform to the
+-- | A call is valid if its arguments all typecheck and conform to the
 -- formals, and the name exists in the class.
 validCall :: Typ -> String -> [Expr] -> Typing ()
 validCall t fName args = join (argsConform <$> argTypes <*> formTypes)
@@ -164,8 +167,9 @@ validCall t fName args = join (argsConform <$> argTypes <*> formTypes)
 castTarget :: TExpr            -- ^ The target expression
                -> String       -- ^ Feature to search for
                -> Typing TExpr -- ^ Casted target
-castTarget trg fname =
-  maybe (throwError $ "castTarget error " ++ show (trg, fname)) return =<< castTargetM trg fname
+castTarget trg fname = do
+  castTrgMb <- castTargetM trg fname
+  maybe (throwError $ "castTarget error " ++ show (trg, fname)) return castTrgMb
 
 -- | Takes an expression and a feature name, possibly returning
 -- the expression casted to the parent which contains the feature.
