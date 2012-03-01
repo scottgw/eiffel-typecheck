@@ -34,7 +34,7 @@ lookupClass t = liftM (maybe (error $ "lookupClas: can't find " ++ show t) id)
 
 lookupFeatureM typ name = do
   clas <- lookupClassM typ
-  return (findFeatureInt <$> clas <*> pure name)
+  return (findFeature <$> clas <*> pure name)
 
 lookupAttrM :: ClassReader r m => Typ -> String -> m (Maybe (Attribute Expr))
 lookupAttrM t name = do

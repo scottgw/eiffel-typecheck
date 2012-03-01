@@ -7,15 +7,15 @@ import Control.Monad.Reader
 import Language.Eiffel.Eiffel
 
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
-import Language.Eiffel.TypeCheck.TypedExpr (TStmt, TFeature, TClass)
+import Language.Eiffel.TypeCheck.TypedExpr (TStmt, TRoutine, TClass)
 
 import Language.Eiffel.TypeCheck.BasicTypes
 import Language.Eiffel.TypeCheck.Context
 import Language.Eiffel.TypeCheck.Expr
 
-featureEnv :: Feature -> TypeContext -> TypeContext
-featureEnv f = 
-    addDecls (featureArgs f ++ featureLocal (featureImpl f)) . setResult f
+routineEnv :: Routine -> TypeContext -> TypeContext
+routineEnv f = 
+    addDecls (routineArgs f ++ routineLocal (routineImpl f)) . setResult f
   
 clasM :: [ClasInterface] -> Clas -> Either String TClass
 clasM cs c = clasT cs c return
@@ -30,13 +30,13 @@ clas c = do
     invs <- mapM clause (invnts c)
     return $ c {featureClauses = fcs, invnts = invs}
 
-featClause :: FeatureClause FeatureBody Expr 
-              -> Typing (FeatureClause FeatureBody T.TExpr)
+featClause :: FeatureClause RoutineBody Expr 
+              -> Typing (FeatureClause RoutineBody T.TExpr)
 featClause fClause = do
-  fs <- mapM feature (features fClause)
+  fs <- mapM routine (routines fClause)
   cs <- mapM constt (constants fClause)
   as <- mapM attr (attributes fClause)
-  return (fClause { features = fs
+  return (fClause { routines = fs
                   , constants = cs
                   , attributes = as
                   })
@@ -57,25 +57,25 @@ constt (Constant froz d e) = Constant froz d `fmap` typeOfExpr e
 -- TODO: Match the type of the expression with the 
 -- delcared type of the constant.
 
-feature :: Feature -> Typing TFeature
-feature f = 
-    local (featureEnv f) 
+routine :: Routine -> Typing TRoutine
+routine f = 
+    local (routineEnv f) 
               (do
-                pre  <- contract (featureReq f)
-                post <- contract (featureEns f)
-                body <- feature' f
+                pre  <- contract (routineReq f)
+                post <- contract (routineEns f)
+                body <- routine' f
                 return $ updFeat f pre body post
               )
 
-updFeat :: FeatureWithBody exp -> Contract exp'
-        -> PosAbsStmt exp' -> Contract exp' -> FeatureWithBody exp'
+updFeat :: RoutineWithBody exp -> Contract exp'
+        -> PosAbsStmt exp' -> Contract exp' -> RoutineWithBody exp'
 updFeat f pre body post = 
-    f { featureImpl = updFeatBody (featureImpl f) body
-      , featureReq = pre
-      , featureEns = post}
+    f { routineImpl = updFeatBody (routineImpl f) body
+      , routineReq = pre
+      , routineEns = post}
 
-feature' :: Feature -> Typing TStmt
-feature' = stmt . featureBody . featureImpl
+routine' :: Routine -> Typing TStmt
+routine' = stmt . routineBody . routineImpl
 
 stmt :: Stmt -> Typing TStmt
 stmt s = setPosition (position s) (uStmt (contents s))

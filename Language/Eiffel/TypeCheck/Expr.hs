@@ -42,8 +42,9 @@ compCall vc trg p ci =
                      asCall trg ci vc)
 
 asAccess trg ci vc = 
-    let dec = findAttrInt ci vc
-    in liftA2 (T.Access trg) (declName <$> dec) (declType <$> dec)
+    let dec = attrDecl <$> findAttrInt ci vc
+    in T.Access trg <$> (declName <$> dec) 
+                    <*> (declType <$> dec)
 
 asCall trg ci vc = do f <- findRoutineInt ci vc
                       guard (null (routineArgs f)) *>
@@ -122,7 +123,7 @@ expr (QualCall trg fName args) = do
   tTrg <- castTarget trgUncasted fName
   let t        = T.texpr tTrg
       realArgs = castGenericArgsM t fName =<< mapM typeOfExpr args
-      resultT  = featureResult <$> fName `inClass` t
+      resultT  = featureResult <$> (fName `inClass` t :: Typing FeatureEx)
       call     = (validCall t fName args) *>
                  (castResult t fName =<< tagPos =<< 
                   T.Call tTrg fName <$> realArgs <*> resultT)
@@ -168,8 +169,7 @@ castTargetWith :: Typ                  -- ^ The target type
                   -> Typing (Maybe (TExpr -> TExpr)) -- ^ The new cast
 castTargetWith t fname cast = do
   ci <- lookupClass t
-  if isJust (findFeatureInt ci fname) ||
-     isJust (findAttrInt ci fname)
+  if isJust (findFeatureEx ci fname)
     then return (Just cast)
     else do
       let inheritCast parent = 

@@ -100,14 +100,20 @@ biTyper op lf rf resTyp t1 t2 = do
   guardThrow (rf t2) $ "Second type is wrong " ++ show op ++ " got " ++ show t2
   return (resTyp, liftNum t1 t2)
 
-inClass, inGenClass :: ClassFeature a EmptyBody Expr => 
- String -> Typ -> Typing a
+inClass :: ClassFeature a EmptyBody Expr => String -> Typ -> Typing a
 inClass = inClass' resolveIFace
-inGenClass    = inClass' lookupClass
 
+inGenClass  :: ClassFeature a EmptyBody Expr => String -> Typ -> Typing a
+inGenClass   = inClass' lookupClass
+
+inClass' :: ClassFeature a body expr =>
+            (Typ -> Typing (AbsClas body expr))
+            -> String
+            -> Typ
+            -> Typing a
 inClass' lookupC fName t = do
   ci   <- lookupC t
-  maybeThrow (findFeatureInt ci fName) $ "No Feature Found: " ++ fName
+  maybeThrow (findFeature ci fName) $ "No Feature Found: " ++ fName
 
 
 -- attrInClass :: String -> Typ -> Typing (Attribute Expr)
