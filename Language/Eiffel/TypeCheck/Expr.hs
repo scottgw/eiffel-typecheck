@@ -1,4 +1,3 @@
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Language.Eiffel.TypeCheck.Expr where
@@ -23,9 +22,12 @@ clause :: Clause Expr -> Typing (Clause TExpr)
 clause (Clause n e) =
   Clause n <$> typeOfExprIs BoolType e
 
-convertVarCall :: String -> TExpr -> Typing (Maybe TExpr)
-convertVarCall vc trg = do
-  trgM <- castTargetM trg vc
+-- | Determine whether a given string (for a VarOrCall) is a call or
+-- a local variable of some sort.
+convertVarCall :: String -> Typing (Maybe TExpr)
+convertVarCall vc = do
+  current <- currentM
+  trgM <- castTargetM current vc
   p <- currentPos
   case trgM of
     Nothing -> 
@@ -92,7 +94,7 @@ expr (LitChar c)   = tagPos (T.LitChar c)
 expr CurrentVar    = currentM
 expr ResultVar     = (T.ResultVar <$> result <$> ask) >>= tagPos
 
-expr (VarOrCall s) = (convertVarCall s =<< currentM) >>=
+expr (VarOrCall s) = (convertVarCall s) >>=
     maybe (throwError ("Can't resolve " ++ s)) return
 
 expr (UnOpExpr op e) = tagPos =<< (T.UnOpExpr op <$> te <*> res)
