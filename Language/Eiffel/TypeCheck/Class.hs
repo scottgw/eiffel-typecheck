@@ -88,20 +88,14 @@ uStmt (CallStmt e) = do
   
 uStmt (Assign s e) = do
   s' <- typeOfExpr s
-  e' <- flip conformThrow (T.texpr s') =<< typeOfExpr e
+  e' <- typeOfExprIs (T.texpr s') e
   return $ inheritPos (Assign s') e'
---  t  <- conformThrow e' tVar
---  case contents e' of
---    T.LitVoid _ -> tagPos (T.LitVoid t) >>= tagPos . Assign s
---    _ -> tagPos (Assign s e')
 
 uStmt (If cond body elseIfs elsePart) = do
-  cond' <- typeOfExpr cond
-  guardThrow (isBool $ T.texpr cond') "Stmt: If requires Bool"
+  cond' <- typeOfExprIs BoolType cond
   body' <- stmt body
   let checkElseIf (ElseIfPart c s) = do
-        c' <- typeOfExpr c
-        guardThrow (isBool $ T.texpr c') "Stmt: ElseIf requires Bool"
+        c' <- typeOfExprIs BoolType c
         s' <- stmt s
         return (ElseIfPart c' s')
   elseIfs' <- mapM checkElseIf elseIfs
@@ -113,23 +107,18 @@ uStmt (If cond body elseIfs elsePart) = do
 uStmt (Loop setup invs cond body) = do
   setup' <- stmt setup
   invs' <- mapM clause invs
-  cond' <- typeOfExpr cond
-  case T.texpr cond' of
-    BoolType -> return ()
-    _        -> throwError "loop condition should be of type boolean"
+  cond' <- typeOfExprIs BoolType cond
   body' <- stmt body
   tagPos (Loop setup' invs' cond' body')
 
 uStmt (Block ss) = Block `fmap` mapM stmt ss >>= tagPos
 
 uStmt (Print e)  = do
-  e' <- typeOfExpr e
-  guardThrow (isInt $ T.texpr e') "uStmt: Print not int"
+  e' <- typeOfExprIs IntType e
   tagPos (Print e')
 
 uStmt (PrintD e)  = do
-  e' <- typeOfExpr e
-  guardThrow (isDouble $ T.texpr e') "uStmt: Print not double"
+  e' <- typeOfExprIs DoubleType e
   tagPos (PrintD e')
 
 uStmt (Create typeMb vr fName args) = do
