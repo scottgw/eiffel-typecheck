@@ -104,12 +104,13 @@ uStmt (If cond body elseIfs elsePart) = do
               Just e  -> Just `fmap` stmt e
   tagPos (If cond' body' elseIfs' else')
 
-uStmt (Loop setup invs cond body) = do
+uStmt (Loop setup invs cond body var) = do
   setup' <- stmt setup
   invs' <- mapM clause invs
   cond' <- typeOfExprIs BoolType cond
   body' <- stmt body
-  tagPos (Loop setup' invs' cond' body')
+  var' <- maybe (return Nothing) (fmap Just . typeOfExprIs IntType) var
+  tagPos (Loop setup' invs' cond' body' var')
 
 uStmt (Block ss) = Block `fmap` mapM stmt ss >>= tagPos
 
