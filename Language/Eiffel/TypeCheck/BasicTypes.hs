@@ -136,7 +136,7 @@ conforms t1 t2
     | otherwise = 
         let
             ihts :: Typing [Typ]
-            ihts = (map inheritClass . inherit) <$> resolveIFace t1
+            ihts = allInheritedTypes <$> resolveIFace t1
 
             conformss :: [Typ] -> Typing [Maybe (TExpr -> TExpr)]
             conformss = mapM (flip conforms t2)

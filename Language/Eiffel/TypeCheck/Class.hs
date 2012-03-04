@@ -15,8 +15,8 @@ import Language.Eiffel.TypeCheck.Expr
 
 routineEnv :: Routine -> TypeContext -> TypeContext
 routineEnv f = 
-    addDecls (routineArgs f ++ routineLocal (routineImpl f)) . setResult f
-  
+    addDecls (routineArgs f ++ routineDecls f) . setResult f
+
 clasM :: [ClasInterface] -> Clas -> Either String TClass
 clasM cs c = clasT cs c return
 

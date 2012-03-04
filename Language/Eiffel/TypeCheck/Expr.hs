@@ -200,7 +200,7 @@ castTargetWith t fname cast = do
     else do
       let inheritCast parent = 
             castTargetWith parent fname (inheritPos (T.Cast parent) . cast)
-      castsMb <- mapM inheritCast (map inheritClass (inherit ci))
+      castsMb <- mapM inheritCast (allInheritedTypes ci)
       return (listToMaybe $ catMaybes castsMb)
 
 -- | If the target expr is an attribute access then lookup then possibly
