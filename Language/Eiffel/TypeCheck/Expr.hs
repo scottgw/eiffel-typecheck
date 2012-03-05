@@ -151,10 +151,6 @@ expr (QualCall trg fName args) = do
       resultT <- featureResult <$> (fName `inClass` t :: Typing FeatureEx)
       tCall <- tagPos (T.Call tTrg fName genArgs resultT)
       castResult t fName tCall
-  
-
-expr (Cast t e) = T.Cast t `fmap` typeOfExpr e >>= tagPos
-
 
 -- | A call is valid if its arguments all typecheck and conform to the
 -- formals, and the name exists in the class.

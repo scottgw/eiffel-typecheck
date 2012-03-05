@@ -1,5 +1,7 @@
 module Language.Eiffel.TypeCheck.TypedExpr where
 
+import Control.Applicative
+
 import Language.Eiffel.Eiffel (Typ (..), BinOp, UnOp, ClassName)
 import Language.Eiffel.Class
 import Language.Eiffel.Clause
@@ -22,7 +24,7 @@ data UnPosTExpr
   | Var String Typ
   | BinOpExpr BinOp TExpr TExpr Typ
   | UnOpExpr UnOp TExpr Typ
-  | Attached ClassName TExpr String
+  | Attached (Maybe Typ) TExpr (Maybe String)
   | ResultVar Typ
   | CurrentVar Typ
   | Box Typ TExpr
@@ -64,6 +66,12 @@ untypeStmt' (Assign l e) = Assign (untypeExpr l) (untypeExpr e)
 untypeStmt' (CallStmt e) = CallStmt (untypeExpr e)
 untypeStmt' (Block ss)   = Block (map untypeStmt ss)
 untypeStmt' BuiltIn      = BuiltIn
+untypeStmt' (Loop from inv until body var) =
+  Loop (untypeStmt from)
+       (map untypeClause inv)
+       (untypeExpr until)
+       (untypeStmt body)
+       (untypeExpr <$> var)
 untypeStmt' (If e body elseIfs elsePart) = 
   let untypeElseIf (ElseIfPart cond s) = 
         ElseIfPart (untypeExpr cond) (untypeStmt s)
@@ -88,20 +96,23 @@ untypeExpr' (Var s _t)
 untypeExpr' (CurrentVar _t)
     = E.CurrentVar
 untypeExpr' (Cast t e) 
-    = E.Cast t (untypeExpr e)
+    = contents $ untypeExpr e
 untypeExpr' (ResultVar _t)
     = E.ResultVar
-           --- | BinOpExpr BinOp TExpr TExpr Typ
-           --- | UnOpExpr UnOp TExpr Typ
-           --- | Attached ClassName TExpr String
-           --- | Box Typ TExpr
-           --- | Unbox Typ TExpr
-           --- | LitChar Char
-           --- | LitString String
-           --- | LitInt Int
-           --- | LitBool Bool
-           --- | LitVoid Typ
-           --- | LitDouble Double deriving (Show, Eq)
+untypeExpr' (BinOpExpr op e1 e2 _)
+  = E.BinOpExpr op (untypeExpr e1) (untypeExpr e2)
+untypeExpr' (UnOpExpr op e _)
+  = E.UnOpExpr op (untypeExpr e)
+untypeExpr' (Attached typ e asName)
+  = E.Attached typ (untypeExpr e) asName
+untypeExpr' (Box _ e) = contents $ untypeExpr e
+untypeExpr' (Unbox _ e) = contents $ untypeExpr  e
+untypeExpr' (LitChar c) = E.LitChar c
+untypeExpr' (LitString s) = E.LitString s
+untypeExpr' (LitInt i) = E.LitInt i
+untypeExpr' (LitBool b) =  E.LitBool b
+untypeExpr' (LitVoid _) = E.LitVoid
+untypeExpr' (LitDouble d) = E.LitDouble d
 untypeExpr' s = error $ show s      
 
 texpr :: TExpr -> Typ
