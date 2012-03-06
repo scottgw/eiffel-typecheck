@@ -13,42 +13,49 @@ import Language.Eiffel.TypeCheck.BasicTypes
 import Language.Eiffel.TypeCheck.Context
 import Language.Eiffel.TypeCheck.Expr
 
-routineEnv :: Routine -> TypeContext -> TypeContext
+routineEnv :: AbsRoutine body' Expr -> TypeContext body -> TypeContext body
 routineEnv f = 
-    addDecls (routineArgs f ++ routineDecls f) . setResult f
+    addDecls (routineArgs f) . setResult f
 
-clasM :: [ClasInterface] -> Clas -> Either String TClass
+clasM :: [AbsClas body Expr] -> Clas -> Either String TClass
 clasM cs c = clasT cs c return
 
-clasT :: [ClasInterface] -> Clas -> (TClass -> Typing b) 
-         ->  Either String b
-clasT cs c m = idErrorRead (clas c >>= m) (mkCtx c cs)
+clasT :: [AbsClas body Expr] -> Clas -> (TClass -> TypingBody body a) 
+         ->  Either String a
+clasT cs c m = idErrorRead (clas c >>= m) (mkCtx (cType c) cs)
 
-clas :: Clas -> Typing TClass
+clas :: Clas -> TypingBody body TClass
 clas c = do
-    fcs  <- mapM featClause (featureClauses c)
+    fcs  <- mapM (featClause routineWithBody) (featureClauses c)
     invs <- mapM clause (invnts c)
     return $ c {featureClauses = fcs, invnts = invs}
 
+cType c =   
+  ClassType (className c) 
+            (map (\ g -> ClassType (genericName g) []) (generics c))
 
 typedPre :: [ClasInterface] -> ClasInterface 
-            -> String -> Typing (Contract T.TExpr)
-typedPre cis classInt name = idErrorRead go (mkCtx classInt cis)
-  where go = undefined
+            -> String -> Either String (Contract T.TExpr)
+typedPre cis classInt name = idErrorRead go (mkCtx (cType classInt) cis)
+  where Just rout = findFeature classInt name 
+        go = local (routineEnv rout)
+                   (do r <- routine (const (return EmptyBody)) rout
+                       return (routineReq r))
 
 
-featClause :: FeatureClause RoutineBody Expr 
-              -> Typing (FeatureClause RoutineBody T.TExpr)
-featClause fClause = do
-  fs <- mapM routine (routines fClause)
+featClause :: (body Expr -> TypingBody body' (body T.TExpr))  
+              -> FeatureClause body Expr 
+              -> TypingBody body' (FeatureClause body T.TExpr)
+featClause  checkBody fClause = do
+  fs <- mapM (routine checkBody) (routines fClause)
   cs <- mapM constt (constants fClause)
   as <- mapM attr (attributes fClause)
   return (fClause { routines = fs
                   , constants = cs
                   , attributes = as
                   })
-
-attr :: Attribute Expr -> Typing (Attribute T.TExpr)
+ 
+attr :: Attribute Expr -> TypingBody body (Attribute T.TExpr)
 attr a = do
   reqs <- contract (attrReq a)
   enss <- contract (attrEns a)
@@ -56,38 +63,42 @@ attr a = do
             , attrEns = enss
             })
     
-contract :: Contract Expr -> Typing (Contract T.TExpr)
+contract :: Contract Expr -> TypingBody body (Contract T.TExpr)
 contract (Contract inherit cs) = Contract inherit `fmap` mapM clause cs
 
-constt :: Constant Expr -> Typing (Constant T.TExpr)
+constt :: Constant Expr -> TypingBody body (Constant T.TExpr)
 constt (Constant froz d e) = Constant froz d `fmap` typeOfExpr e
 -- TODO: Match the type of the expression with the 
 -- delcared type of the constant.
 
-routine :: Routine -> Typing TRoutine
-routine f = 
+routine :: (body Expr -> TypingBody body' (body T.TExpr))
+           -> AbsRoutine body Expr 
+           -> TypingBody body' (AbsRoutine body T.TExpr)
+routine checkBody f = 
     local (routineEnv f) 
               (do
                 pre  <- contract (routineReq f)
                 post <- contract (routineEns f)
-                body <- routine' f
-                return $ updFeat f pre body post
+                body <- checkBody (routineImpl f)
+                return $ f { routineReq = pre
+                           , routineImpl = body
+                           , routineEns = post
+                           }
               )
 
-updFeat :: RoutineWithBody exp -> Contract exp'
-        -> PosAbsStmt exp' -> Contract exp' -> RoutineWithBody exp'
-updFeat f pre body post = 
-    f { routineImpl = updFeatBody (routineImpl f) body
-      , routineReq = pre
-      , routineEns = post}
+routineWithBody :: RoutineBody Expr -> TypingBody body (RoutineBody T.TExpr)
+routineWithBody body = 
+  local (addDecls (routineLocal body))
+        (do stmt <- routineStmt body
+            return (body {routineBody = stmt}))
 
-routine' :: Routine -> Typing TStmt
-routine' = stmt . routineBody . routineImpl
+routineStmt :: RoutineBody Expr -> TypingBody body TStmt
+routineStmt = stmt . routineBody
 
-stmt :: Stmt -> Typing TStmt
+stmt :: Stmt -> TypingBody body TStmt
 stmt s = setPosition (position s) (uStmt (contents s))
 
-uStmt :: UnPosStmt -> Typing TStmt
+uStmt :: UnPosStmt -> TypingBody body TStmt
 
 uStmt (CallStmt e) = do
   e' <- typeOfExpr e
@@ -142,10 +153,6 @@ uStmt (Create typeMb vr fName args) = do
   guardThrow (maybe True (T.texpr trg ==) typeMb) -- FIXME: This should be inherits
                  "Target type doesn't match dynamic type"
   tagPos (Create typeMb trg fName tArgs)
-
-uStmt (DefCreate typeMb v) = 
-  let VarOrCall _ = contents v 
-  in uStmt (Create typeMb v "default_create" [])
 
 uStmt BuiltIn = tagPos BuiltIn
 

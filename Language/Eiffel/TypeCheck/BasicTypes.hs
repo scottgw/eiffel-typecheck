@@ -28,12 +28,12 @@ isNum t = isDouble t || isInt t
 isBool BoolType = True
 isBool _        = False
 
-unOpTypes :: UnOp -> Typ -> Typing Typ
+unOpTypes :: UnOp -> Typ -> TypingBody body Typ
 unOpTypes Not = guardTypePred isBool "Not requires boolean"
 unOpTypes Neg = guardTypePred isNum "Negation requires number"
 unOpTypes Sqrt = guardTypePred isDouble "Sqrt requires double"
 
-guardTypePred :: (Typ -> Bool) -> String -> Typ -> Typing Typ
+guardTypePred :: (Typ -> Bool) -> String -> Typ -> TypingBody body Typ
 guardTypePred p s t = guardThrow (p t) s >> return t
 
 guardTypeIs typ expr = 
@@ -41,9 +41,9 @@ guardTypeIs typ expr =
                 ("require " ++ show typ)
                 (T.texpr expr)
 
-type BinOpTyping = Typ -> Typ -> Typing (Typ, Typ)
+type BinOpTyping body = Typ -> Typ -> TypingBody body (Typ, Typ)
 
-opTypes :: BinOp -> BinOpTyping
+opTypes :: BinOp -> BinOpTyping body
 opTypes Add = numTyper Add
 opTypes Sub = numTyper Sub
 opTypes Mul = numTyper Mul
@@ -82,48 +82,49 @@ liftNum BoolType BoolType     = BoolType
 liftNum t1 t2 | t1 == t2      = t1
               | otherwise     = error $ "liftnum: " ++ show (t1,t2)
 
-relOpTyper :: BinOp -> BinOpTyping
+relOpTyper :: BinOp -> BinOpTyping body
 relOpTyper = eqTyper
 
-eqTyper :: BinOp -> BinOpTyping
+eqTyper :: BinOp -> BinOpTyping body
 eqTyper op t1 t2 = do
   guardThrow (t1 == t2) $ "Types not the same for " ++ show op
   return (BoolType, liftNum t1 t2)
 
-numTyper :: BinOp -> BinOpTyping
+numTyper :: BinOp -> BinOpTyping body
 numTyper op t1 t2 = biTyper op isNum isNum (liftNum t1 t2) t1 t2
 
 biTyper :: BinOp -> (Typ -> Bool) -> (Typ -> Bool) -> Typ -> 
-           BinOpTyping
+           BinOpTyping body
 biTyper op lf rf resTyp t1 t2 = do
   guardThrow (lf t1) $ "First type is wrong " ++ show op ++ " got " ++ show t1
   guardThrow (rf t2) $ "Second type is wrong " ++ show op ++ " got " ++ show t2
   return (resTyp, liftNum t1 t2)
 
-inClass :: ClassFeature a EmptyBody Expr => String -> Typ -> Typing a
+inClass :: ClassFeature a body Expr => String -> Typ -> TypingBody body a
 inClass = inClass' resolveIFace
 
-inGenClass  :: ClassFeature a EmptyBody Expr => String -> Typ -> Typing a
+inGenClass  :: ClassFeature a body Expr => 
+               String -> Typ -> TypingBody body a
 inGenClass   = inClass' lookupClass
 
 inClass' :: ClassFeature a body expr =>
-            (Typ -> Typing (AbsClas body expr))
+            (Typ -> TypingBody body (AbsClas body expr))
             -> String
             -> Typ
-            -> Typing a
+            -> TypingBody body a
 inClass' lookupC fName t = do
   ci   <- lookupC t
   maybeThrow (findFeature ci fName) $ "No Feature Found: " ++ fName
 
 
-conformThrow :: TExpr -> Typ -> Typing TExpr
+conformThrow :: TExpr -> Typ -> TypingBody body TExpr
 conformThrow expr t = do
   r <- conforms (T.texpr expr) t
   case r of
     Just f  -> return (f expr)
     Nothing -> throwError (show expr ++ " doesn't conform to " ++ show t)
 
-conforms :: Typ -> Typ -> Typing (Maybe (TExpr -> TExpr))
+conforms :: Typ -> Typ -> TypingBody body (Maybe (TExpr -> TExpr))
 conforms VoidType t 
     | isBasic t = return Nothing
     | otherwise = return (Just (inheritPos (T.Cast t)))
@@ -135,13 +136,13 @@ conforms t1 t2
     | t1 == t2 = return (Just id)
     | otherwise = 
         let
-            ihts :: Typing [Typ]
+            ihts :: TypingBody body [Typ]
             ihts = allInheritedTypes <$> resolveIFace t1
 
-            conformss :: [Typ] -> Typing [Maybe (TExpr -> TExpr)]
+            conformss :: [Typ] -> TypingBody body [Maybe (TExpr -> TExpr)]
             conformss = mapM (flip conforms t2)
 
-            cast :: Typing (Maybe (TExpr -> TExpr)) 
+            cast :: TypingBody body (Maybe (TExpr -> TExpr)) 
             cast = fmap msum . conformss =<< ihts
 
             castWithPos :: TExpr -> TExpr
