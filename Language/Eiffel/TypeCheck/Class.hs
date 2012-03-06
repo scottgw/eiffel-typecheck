@@ -30,6 +30,13 @@ clas c = do
     invs <- mapM clause (invnts c)
     return $ c {featureClauses = fcs, invnts = invs}
 
+
+typedPre :: [ClasInterface] -> ClasInterface 
+            -> String -> Typing (Contract T.TExpr)
+typedPre cis classInt name = idErrorRead go (mkCtx classInt cis)
+  where go = undefined
+
+
 featClause :: FeatureClause RoutineBody Expr 
               -> Typing (FeatureClause RoutineBody T.TExpr)
 featClause fClause = do
