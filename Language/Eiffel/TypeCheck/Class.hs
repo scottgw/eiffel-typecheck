@@ -1,4 +1,4 @@
-module Language.Eiffel.TypeCheck.Class (clas, clasM, clasT) where
+module Language.Eiffel.TypeCheck.Class (clas, clasM, clasT, typedPre) where
 
 import Control.Applicative
 import Control.Monad.Error

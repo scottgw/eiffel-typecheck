@@ -66,6 +66,7 @@ untypeStmt' (Assign l e) = Assign (untypeExpr l) (untypeExpr e)
 untypeStmt' (CallStmt e) = CallStmt (untypeExpr e)
 untypeStmt' (Block ss)   = Block (map untypeStmt ss)
 untypeStmt' BuiltIn      = BuiltIn
+untypeStmt' (Check cs)   = Check (map untypeClause cs)
 untypeStmt' (Loop from inv until body var) =
   Loop (untypeStmt from)
        (map untypeClause inv)
