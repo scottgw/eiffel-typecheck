@@ -21,15 +21,18 @@ type TExpr = Pos UnPosTExpr
 data UnPosTExpr 
   = Call TExpr String [TExpr] Typ
   | Access TExpr String Typ
+  | Agent TExpr
   | Var String Typ
   | BinOpExpr BinOp TExpr TExpr Typ
   | UnOpExpr UnOp TExpr Typ
   | Attached (Maybe Typ) TExpr (Maybe String)
+  | Tuple [TExpr]
   | ResultVar Typ
   | CurrentVar Typ
   | Box Typ TExpr
   | Unbox Typ TExpr
   | Cast Typ TExpr
+  | LitArray [TExpr]
   | LitChar Char
   | LitString String
   | LitInt Int
@@ -50,10 +53,12 @@ untypeConstant (Constant froz decl expr) =
   Constant froz decl (untypeExpr expr)
 
 untypeFeat :: TRoutine -> Routine
-untypeFeat tfeat = tfeat { routineImpl = untypeImpl (routineImpl tfeat)
-                         , routineReq  = untypeContract (routineReq tfeat)
-                         , routineEns  = untypeContract (routineEns tfeat)
-                         }
+untypeFeat tfeat = 
+  tfeat { routineImpl = untypeImpl (routineImpl tfeat)
+        , routineReq  = untypeContract (routineReq tfeat)
+        , routineEns  = untypeContract (routineEns tfeat)
+        , routineRescue = map untypeStmt `fmap` routineRescue tfeat
+        }
 
 untypeImpl :: RoutineBody TExpr -> RoutineBody Expr
 untypeImpl body = body {routineBody = untypeStmt (routineBody body)}
@@ -108,6 +113,7 @@ untypeExpr' (Attached typ e asName)
   = E.Attached typ (untypeExpr e) asName
 untypeExpr' (Box _ e) = contents $ untypeExpr e
 untypeExpr' (Unbox _ e) = contents $ untypeExpr  e
+untypeExpr' (LitArray es) = E.LitArray (map untypeExpr es)
 untypeExpr' (LitChar c) = E.LitChar c
 untypeExpr' (LitString s) = E.LitString s
 untypeExpr' (LitInt i) = E.LitInt i

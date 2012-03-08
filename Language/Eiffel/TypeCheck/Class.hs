@@ -80,11 +80,16 @@ routine checkBody f =
                 pre  <- contract (routineReq f)
                 post <- contract (routineEns f)
                 body <- checkBody (routineImpl f)
+                resc <- rescue (routineRescue f)
                 return $ f { routineReq = pre
                            , routineImpl = body
                            , routineEns = post
+                           , routineRescue = resc
                            }
               )
+
+rescue Nothing = return Nothing
+rescue (Just ss) = Just <$> mapM stmt ss
 
 routineWithBody :: RoutineBody Expr -> TypingBody body (RoutineBody T.TExpr)
 routineWithBody body = 
