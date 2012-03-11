@@ -8,7 +8,9 @@ import Control.Monad.Reader
 
 import Data.Maybe
 
-import Language.Eiffel.Eiffel
+import Language.Eiffel.Syntax
+import Language.Eiffel.Position
+import Language.Eiffel.Util
 
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 import Language.Eiffel.TypeCheck.TypedExpr (TExpr)

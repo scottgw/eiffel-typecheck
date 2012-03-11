@@ -10,7 +10,9 @@ import Control.Monad.Reader
 import Data.Map hiding (map, null)
 import Prelude hiding (lookup)
 
-import Language.Eiffel.Eiffel
+import Language.Eiffel.Syntax
+import Language.Eiffel.Position
+import Language.Eiffel.Util
 
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 import Language.Eiffel.TypeCheck.TypedExpr (TExpr)
@@ -27,7 +29,7 @@ data TypeContext body = TypeContext {
 
 type TypeError = ErrorT String Identity
 type TypingBody body = ReaderT (TypeContext body) TypeError
-type Typing = TypingBody RoutineBody
+type Typing = TypingBody (RoutineBody Expr)
 
 instance HasClasEnv (TypeContext body) body where
     classEnv = interfaces

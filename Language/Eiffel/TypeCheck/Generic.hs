@@ -4,7 +4,8 @@ import Control.Monad
 
 import Language.Eiffel.TypeCheck.Context
 
-import Language.Eiffel.Eiffel
+import Language.Eiffel.Syntax
+import Language.Eiffel.Util
 
 import Util.Monad
 

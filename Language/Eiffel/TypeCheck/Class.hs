@@ -4,11 +4,12 @@ import Control.Applicative
 import Control.Monad.Error
 import Control.Monad.Reader
 
-import Language.Eiffel.Eiffel
+import Language.Eiffel.Syntax
+import Language.Eiffel.Position
+import Language.Eiffel.Util
 
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 import Language.Eiffel.TypeCheck.TypedExpr (TStmt, TRoutine, TClass)
-
 import Language.Eiffel.TypeCheck.BasicTypes
 import Language.Eiffel.TypeCheck.Context
 import Language.Eiffel.TypeCheck.Expr
@@ -43,9 +44,9 @@ typedPre cis classInt name = idErrorRead go (mkCtx (cType classInt) cis)
                        return (routineReq r))
 
 
-featClause :: (body Expr -> TypingBody body' (body T.TExpr))  
+featClause :: (body -> TypingBody ctxBody body')  
               -> FeatureClause body Expr 
-              -> TypingBody body' (FeatureClause body T.TExpr)
+              -> TypingBody ctxBody (FeatureClause body' T.TExpr)
 featClause  checkBody fClause = do
   fs <- mapM (routine checkBody) (routines fClause)
   cs <- mapM constt (constants fClause)
@@ -71,9 +72,9 @@ constt (Constant froz d e) = Constant froz d `fmap` typeOfExpr e
 -- TODO: Match the type of the expression with the 
 -- delcared type of the constant.
 
-routine :: (body Expr -> TypingBody body' (body T.TExpr))
+routine :: (body -> TypingBody ctxBody body')
            -> AbsRoutine body Expr 
-           -> TypingBody body' (AbsRoutine body T.TExpr)
+           -> TypingBody ctxBody (AbsRoutine body' T.TExpr)
 routine checkBody f = 
     local (routineEnv f) 
               (do

@@ -2,14 +2,10 @@ module Language.Eiffel.TypeCheck.TypedExpr where
 
 import Control.Applicative
 
-import Language.Eiffel.Eiffel (Typ (..), BinOp, UnOp, ClassName)
-import Language.Eiffel.Class
-import Language.Eiffel.Clause
-import Language.Eiffel.Feature
-import qualified Language.Eiffel.Expr as E
-import Language.Eiffel.Expr (Expr, UnPosExpr)
-import Language.Eiffel.Stmt
+import qualified Language.Eiffel.Syntax as E (UnPosExpr (..))
+import Language.Eiffel.Syntax hiding (UnPosExpr (..))
 import Language.Eiffel.Position
+import Language.Eiffel.Util
 
 type TClass = ClasBody TExpr
 type TRoutine = RoutineWithBody TExpr
@@ -92,7 +88,7 @@ untypeStmt' s = error (show s)
 untypeExpr :: TExpr -> Expr
 untypeExpr = fmap untypeExpr'
 
-untypeExpr' :: UnPosTExpr -> UnPosExpr
+untypeExpr' :: UnPosTExpr -> E.UnPosExpr
 untypeExpr' (Call trg name args _r)
     = E.QualCall (untypeExpr trg) name (map untypeExpr args)
 untypeExpr' (Access trg name _r)

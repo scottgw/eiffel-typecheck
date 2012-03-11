@@ -7,11 +7,8 @@ import Control.Monad.Reader
 
 import Data.Map
 
-import Language.Eiffel.Class
-import Language.Eiffel.Expr
-import Language.Eiffel.Feature
-import Language.Eiffel.Typ
-import Language.Eiffel.Decl
+import Language.Eiffel.Syntax
+import Language.Eiffel.Util
 
 class HasClasEnv r body | r -> body where
     classEnv :: r -> Map String (AbsClas body Expr)
