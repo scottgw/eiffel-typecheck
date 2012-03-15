@@ -22,6 +22,7 @@ data UnPosTExpr
   | BinOpExpr BinOp TExpr TExpr Typ
   | UnOpExpr UnOp TExpr Typ
   | Attached (Maybe Typ) TExpr (Maybe String)
+  | StaticCall Typ String [TExpr] Typ
   | Tuple [TExpr]
   | ResultVar Typ
   | CurrentVar Typ
@@ -136,6 +137,7 @@ texprTyp (BinOpExpr _ _ _ t) = t
 texprTyp (UnOpExpr _ _ t) = t
 texprTyp (Box _ te) = texpr te
 texprTyp (Unbox t _) = t
+texprTyp (StaticCall _ _ _ t) = t
 texprTyp (LitChar _) = ClassType "CHARACTER" []
-texprTyp (Attached _ _ _) = error "texprTyp: attachment test unimplemented"
+texprTyp (Attached _ _ _) = BoolType
 texprTyp (LitString _) = ClassType "STRING" []

@@ -1,11 +1,14 @@
 module Language.Eiffel.TypeCheck.Generic where
 
+import Control.Applicative
 import Control.Monad
 
 import Language.Eiffel.TypeCheck.Context
+import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 
 import Language.Eiffel.Syntax
 import Language.Eiffel.Util
+import Language.Eiffel.Position
 
 import Util.Monad
 
@@ -33,7 +36,15 @@ satisfiesGeneric _g _t = return True
 
 resolveIFace :: Typ -> TypingBody body (AbsClas body Expr)
 resolveIFace t@(ClassType _ ts) = updateGenerics ts `fmap` lookupClass t
-resolveIFace (Sep _ _ t) = resolveIFace (ClassType t [])
+resolveIFace (Like ident) = do
+  T.CurrentVar t <- contents <$> currentM
+  cls <- lookupClass t
+  let Just feat = findFeatureEx cls ident
+      res = if ident == "Current"
+            then t 
+            else featureResult feat
+  resolveIFace res
+resolveIFace (Sep _ _ t)  = resolveIFace (ClassType t [])
 resolveIFace t = error $ "resolveIFace: called on " ++ show t
 
 type GenUpd a = ClassName -> Typ -> a -> a

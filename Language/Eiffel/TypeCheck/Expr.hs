@@ -58,14 +58,16 @@ asCall trg ci vc = do
   return (T.Call trg (featureName f) [] (featureResult f))
 
 typeOfExpr :: Expr -> TypingBody body TExpr
-typeOfExpr e = setPosition (position e) (expr (contents e))
+typeOfExpr e = setPosition (position e) 
+               (catchError (expr (contents e))
+                           (\str -> throwError $ 
+                                    str ++ " at " ++ show (position e)))
 
 typeOfExprIs :: Typ -> Expr -> TypingBody body TExpr
 typeOfExprIs typ expr = do
   e' <- typeOfExpr expr
   _  <- guardTypeIs typ e'
   return e'
-
 
 binOpArgCasts e1 e2 
   | isBasic t1 && isBasic t2 = return (e1,e2)
@@ -84,7 +86,6 @@ binOpArgCasts e1 e2
     where 
       t1 =  T.texprTyp (contents e1)
       t2 =  T.texprTyp (contents e2)
-                                       
 
 expr :: UnPosExpr -> TypingBody body TExpr
 expr (LitInt i)    = tagPos (T.LitInt i)
@@ -95,19 +96,53 @@ expr (LitString s) = tagPos (T.LitString s)
 expr (LitChar c)   = tagPos (T.LitChar c)
 expr CurrentVar    = currentM
 expr ResultVar     = (T.ResultVar <$> result <$> ask) >>= tagPos
-
-expr (VarOrCall s) = (convertVarCall s) >>=
-    maybe (throwError ("Can't resolve " ++ s)) return
-
+expr (StaticCall typ name args) = do
+  castMb <- castTargetWith typ name
+  case castMb of
+    Nothing -> 
+      throwError (show typ ++ ": does not contain static call " ++ name)
+    Just cast -> do 
+      let typ' = T.texprTyp (contents $ cast (attachEmptyPos $ T.LitInt 0))
+      args' <- mapM typeOfExpr args
+      cls <- lookupClass typ'
+      let 
+        f = fromJust $ findFeatureEx cls name
+        argTypes = map declType (featureArgs f)
+      argsConform args' argTypes
+      tagPos (T.StaticCall typ' name args' (featureResult f))
+                   
+expr (VarOrCall s) = do
+  exprMb <- convertVarCall s
+  c <- currentM
+  maybe (throwError ("TypeCheckc.Expr.expr: Can't resolve " ++ s ++ " from " ++ show c)) return exprMb
+expr (Attached typeMb attch asMb) = do
+  --TODO: Decide if we have to do any checking between typeMb and attch
+  attch' <- typeOfExpr attch
+  tagPos $ T.Attached typeMb attch' asMb
 expr (UnOpExpr op e) = tagPos =<< (T.UnOpExpr op <$> te <*> res)
   where te  = typeOfExpr e
         res = unOpTypes op =<< (T.texpr <$> te)
-        
+expr (BinOpExpr op e1@(Pos pos (Attached {})) e2) = do
+  e1' <- typeOfExpr e1
+  let T.Attached _typeMb attch asMb = contents e1'
+      attTyp = T.texprTyp (contents attch)
+  e2' <- case asMb of
+      Just as -> local (addDecls [Decl as attTyp]) (typeOfExpr e2)
+      Nothing -> typeOfExpr e2
+  (e1'', e2'') <- binOpArgCasts e1' e2'
+  (resType, argType) <- opTypes op (T.texpr e1'') (T.texpr e2'')
+  tagPos $ T.BinOpExpr 
+         (castOp op argType)
+         (castTyp argType e1'')
+         (castTyp argType e2'')
+         resType
+  
+  
 expr (BinOpExpr (SymbolOp op) e1 e2) = do
   e1' <- typeOfExpr e1
   cls <- lookupClass (T.texpr e1')
   case findOperator cls op of
-    Nothing -> throwError ("No feature found associated with operator " ++ op)
+    Nothing -> throwError ("No feature foudn associated with operator " ++ op)
     Just f -> expr (QualCall e1 (featureName f) [e2])
     
 expr (BinOpExpr op e1 e2) = do
@@ -153,6 +188,7 @@ expr (QualCall trg fName args) = do
       resultT <- featureResult <$> (fName `inClass` t :: TypingBody body FeatureEx)
       tCall <- tagPos (T.Call tTrg fName genArgs resultT)
       castResult t fName tCall
+expr t = throwError ("TypeCheck.Expr.expr: " ++ show t)
 
 -- | A call is valid if its arguments all typecheck and conform to the
 -- formals, and the name exists in the class.
@@ -177,7 +213,7 @@ castTargetM :: TExpr                    -- ^ The target expression
                -> String                -- ^ Feature to search for
                -> TypingBody body (Maybe TExpr)  -- ^ Possibly casted target
 castTargetM trg fname = do
-  castMb <- castTargetWith (T.texpr trg) fname id
+  castMb <- castTargetWith (T.texpr trg) fname
   return (castMb >>= \cast -> return (cast trg))
 
 -- | Goes up the list of parents to find where a feature comes
@@ -189,17 +225,29 @@ castTargetM trg fname = do
 -- cast is useful for code generation.
 castTargetWith :: Typ                  -- ^ The target type
                   -> String            -- ^ The feature name
-                  -> (TExpr -> TExpr)  -- ^ The cast so far
                   -> TypingBody body (Maybe (TExpr -> TExpr)) -- ^ The new cast
-castTargetWith t fname cast = do
-  ci <- lookupClass t
-  if isJust (findFeatureEx ci fname)
-    then return (Just cast)
-    else do
-      let inheritCast parent = 
-            castTargetWith parent fname (inheritPos (T.Cast parent) . cast)
-      castsMb <- mapM inheritCast (allInheritedTypes ci)
-      return (listToMaybe $ catMaybes castsMb)
+castTargetWith t fname = 
+  let
+    anyT = ClassType "ANY" []
+
+    go :: Typ -> (TExpr -> TExpr) -> TypingBody ctxBody (Maybe (TExpr -> TExpr))
+    go t cast = 
+      do ci <- lookupClass t
+         if isJust (findFeatureEx ci fname)
+           then return (Just cast)
+           else do let inheritCast parent = 
+                         go parent (inheritPos (T.Cast parent) . cast)
+                   castsMb <- mapM inheritCast (allInheritedTypes ci)
+                   return (listToMaybe $ catMaybes castsMb)
+
+  in do castMb <- go t id
+        case castMb of
+          Just f -> return (Just f)
+          Nothing ->
+            do anyC <- lookupClass anyT
+               if isJust (findFeatureEx anyC fname)
+                 then return $ Just (inheritPos (T.Cast anyT))
+                 else return $ Nothing
 
 -- | If the target expr is an attribute access then lookup then possibly
 -- cast or unbox the result in the case where the originating class is generic.

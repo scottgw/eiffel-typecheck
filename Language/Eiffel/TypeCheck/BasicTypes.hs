@@ -24,13 +24,17 @@ isInt _       = False
 isDouble DoubleType = True
 isDouble _          = False
 
+isOtherNumType (ClassType name _) =
+  name `elem` ["INTEGER_32"]
+
 isNum :: Typ -> Bool
-isNum t = isDouble t || isInt t
+isNum t = isDouble t || isInt t || isOtherNumType t
 
 isBool BoolType = True
 isBool _        = False
 
 unOpTypes :: UnOp -> Typ -> TypingBody body Typ
+unOpTypes Old = return
 unOpTypes Not = guardTypePred isBool "Not requires boolean"
 unOpTypes Neg = guardTypePred isNum "Negation requires number"
 unOpTypes Sqrt = guardTypePred isDouble "Sqrt requires double"
@@ -51,10 +55,13 @@ opTypes Sub = numTyper Sub
 opTypes Mul = numTyper Mul
 opTypes Div = numTyper Div
 opTypes Or  = biTyper Or  isBool isBool BoolType
+opTypes OrElse  = biTyper OrElse  isBool isBool BoolType
 opTypes And = biTyper And isBool isBool BoolType
+opTypes AndThen = biTyper AndThen isBool isBool BoolType
 opTypes Implies = biTyper Implies isBool isBool BoolType
 opTypes r@(RelOp _ _) = relOpTyper r
 opTypes (SymbolOp _) = error "opTypes: arbitrary symbol operators not yet supported"
+opTypes o = error $ "opTypes: unknown symbol " ++ show o
 
 castTyp :: Typ -> TExpr -> TExpr
 castTyp DoubleType te = case T.texprTyp (contents te) of
@@ -125,14 +132,21 @@ conformThrow expr t = do
   case r of
     Just f  -> return (f expr)
     Nothing -> throwError (show expr ++ " doesn't conform to " ++ show t)
+    
+
 
 conforms :: Typ -> Typ -> TypingBody body (Maybe (TExpr -> TExpr))
-conforms VoidType t 
+conforms VoidType t
     | isBasic t = return Nothing
     | otherwise = return (Just (inheritPos (T.Cast t)))
 conforms (Sep _ _ t1) (Sep _ _ t2) = 
     conforms (ClassType t1 []) (ClassType t2 [])
 conforms _t VoidType = return Nothing
+conforms _ (ClassType "ANY" []) = return $ Just $ inheritPos (T.Cast (ClassType "ANY" []))
+conforms IntType (ClassType "INTEGER_32" []) = 
+  return Nothing -- $ Just $ inheritPos (T.Cast IntType)
+conforms (ClassType "INTEGER_32" []) IntType = 
+  return $ Just $ inheritPos (T.Cast IntType)
 conforms t1 t2
     | isBasic t1 && isBasic t2 && t1 == t2 = return (Just id)
     | t1 == t2 = return (Just id)
