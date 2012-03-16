@@ -18,19 +18,16 @@ import Language.Eiffel.TypeCheck.Generic
 import Util.Monad
 
 isInt, isDouble, isBool :: Typ -> Bool
-isInt IntType = True
+isInt (ClassType name []) = True
 isInt _       = False
 
-isDouble DoubleType = True
+isDouble (ClassType name []) = True
 isDouble _          = False
 
-isOtherNumType (ClassType name _) =
-  name `elem` ["INTEGER_32"]
-
 isNum :: Typ -> Bool
-isNum t = isDouble t || isInt t || isOtherNumType t
+isNum t = isDouble t || isInt t
 
-isBool BoolType = True
+isBool (ClassType "BOOLEAN" []) = True
 isBool _        = False
 
 unOpTypes :: UnOp -> Typ -> TypingBody body Typ

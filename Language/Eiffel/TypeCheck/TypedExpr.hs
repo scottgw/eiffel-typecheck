@@ -123,9 +123,9 @@ texpr :: TExpr -> Typ
 texpr = texprTyp . contents
 
 texprTyp :: UnPosTExpr -> Typ
-texprTyp (LitInt _)  = IntType
-texprTyp (LitBool _) = BoolType
-texprTyp (LitDouble _) = DoubleType
+texprTyp (LitInt _)  = ClassType "INTEGER_32" []
+texprTyp (LitBool _) = ClassType "BOOLEAN" []
+texprTyp (LitDouble _) = ClassType "REAL_32" []
 texprTyp (LitVoid  t) = t
 texprTyp (Var _ t)   = t
 texprTyp (Cast t _)  = t
@@ -138,6 +138,6 @@ texprTyp (UnOpExpr _ _ t) = t
 texprTyp (Box _ te) = texpr te
 texprTyp (Unbox t _) = t
 texprTyp (StaticCall _ _ _ t) = t
-texprTyp (LitChar _) = ClassType "CHARACTER" []
-texprTyp (Attached _ _ _) = BoolType
+texprTyp (LitChar _) = ClassType "CHARACTER_8" []
+texprTyp (Attached _ _ _) = ClassType "BOOLEAN" []
 texprTyp (LitString _) = ClassType "STRING" []
