@@ -22,7 +22,7 @@ import Util.Monad
 
 clause :: Clause Expr -> TypingBody body (Clause TExpr)
 clause (Clause n e) =
-  Clause n <$> typeOfExprIs BoolType e
+  Clause n <$> typeOfExprIs boolType e
 
 -- | Determine whether a given string (for a VarOrCall) is a call or
 -- a local variable of some sort.
@@ -119,43 +119,37 @@ expr (Attached typeMb attch asMb) = do
   --TODO: Decide if we have to do any checking between typeMb and attch
   attch' <- typeOfExpr attch
   tagPos $ T.Attached typeMb attch' asMb
-expr (UnOpExpr op e) = tagPos =<< (T.UnOpExpr op <$> te <*> res)
-  where te  = typeOfExpr e
-        res = unOpTypes op =<< (T.texpr <$> te)
-expr (BinOpExpr op e1@(Pos pos (Attached {})) e2) = do
-  e1' <- typeOfExpr e1
-  let T.Attached _typeMb attch asMb = contents e1'
-      attTyp = T.texprTyp (contents attch)
-  e2' <- case asMb of
-      Just as -> local (addDecls [Decl as attTyp]) (typeOfExpr e2)
-      Nothing -> typeOfExpr e2
-  (e1'', e2'') <- binOpArgCasts e1' e2'
-  (resType, argType) <- opTypes op (T.texpr e1'') (T.texpr e2'')
-  tagPos $ T.BinOpExpr 
-         (castOp op argType)
-         (castTyp argType e1'')
-         (castTyp argType e2'')
-         resType
-  
-  
-expr (BinOpExpr (SymbolOp op) e1 e2) = do
-  e1' <- typeOfExpr e1
-  cls <- lookupClass (T.texpr e1')
-  case findOperator cls op of
-    Nothing -> throwError ("No feature foudn associated with operator " ++ op)
-    Just f -> expr (QualCall e1 (featureName f) [e2])
-    
-expr (BinOpExpr op e1 e2) = do
-  e1' <- typeOfExpr e1
-  e2' <- typeOfExpr e2
-  (e1'', e2'') <- binOpArgCasts e1' e2'
-  (resType, argType) <- opTypes op (T.texpr e1'') (T.texpr e2'')
-  tagPos $ T.BinOpExpr 
-         (castOp op argType)
-         (castTyp argType e1'')
-         (castTyp argType e2'')
-         resType
-         
+
+expr (UnOpExpr op e)
+  | op == Old =
+    undefined
+  | otherwise = do
+    e' <- typeOfExpr e
+    cls <- lookupClass (T.texpr e')
+    case findOperator cls (unOpAlias op) 1 of
+      Nothing -> 
+        throwError ("No feature found associated with unary operator " ++ show op)
+      Just f -> expr (QualCall e (featureName f) [])
+
+expr (BinOpExpr op e1 e2) 
+  | equalityOp op =
+    undefined
+  | otherwise = do
+    e1' <- typeOfExpr e1
+    let extraLocals = 
+          case contents e1 of
+            Attached _typeMb attch asMb ->
+              let T.Attached _typeMb attch asMb = contents e1'
+                  attTyp = T.texprTyp (contents attch)
+              in case asMb of 
+                Just as -> addDecls [Decl as attTyp]
+                Nothing -> id
+            _ -> id
+    cls <- lookupClass (T.texpr e1')
+    case findOperator cls (opAlias op) 2 of
+      Nothing -> throwError ("No feature found associated with operator " ++ show op)
+      Just f -> local extraLocals (expr $ QualCall e1 (featureName f) [e2])
+
 expr (UnqualCall fName args) = do
   qual <- QualCall <$> tagPos CurrentVar 
                    <*> pure fName 

@@ -213,10 +213,10 @@ uStmt (Assign s e) = do
   return $ inheritPos (Assign s') e'
 
 uStmt (If cond body elseIfs elsePart) = do
-  cond' <- typeOfExprIs BoolType cond
+  cond' <- typeOfExprIs boolType cond
   body' <- stmt body
   let checkElseIf (ElseIfPart c s) = do
-        c' <- typeOfExprIs BoolType c
+        c' <- typeOfExprIs boolType c
         s' <- stmt s
         return (ElseIfPart c' s')
   elseIfs' <- mapM checkElseIf elseIfs
@@ -228,19 +228,19 @@ uStmt (If cond body elseIfs elsePart) = do
 uStmt (Loop setup invs cond body var) = do
   setup' <- stmt setup
   invs' <- mapM clause invs
-  cond' <- typeOfExprIs BoolType cond
+  cond' <- typeOfExprIs boolType cond
   body' <- stmt body
-  var' <- maybe (return Nothing) (fmap Just . typeOfExprIs IntType) var
+  var' <- maybe (return Nothing) (fmap Just . typeOfExprIs intType) var
   tagPos (Loop setup' invs' cond' body' var')
 
 uStmt (Block ss) = Block `fmap` mapM stmt ss >>= tagPos
 
 uStmt (Print e)  = do
-  e' <- typeOfExprIs IntType e
+  e' <- typeOfExprIs intType e
   tagPos (Print e')
 
 uStmt (PrintD e)  = do
-  e' <- typeOfExprIs DoubleType e
+  e' <- typeOfExprIs realType e
   tagPos (PrintD e')
 
 uStmt (Create typeMb vr fName args) = do
