@@ -48,7 +48,7 @@ unlikeAbsClass unlikeImpl clas =
                 })
 
 unlikeDecls clsType decls = 
-  local (addDecls noLikes) ( (noLikes ++) <$> mapM (unlike clsType) likes)
+  local (addDecls noLikes) (mapM (unlike clsType) decls)
     where isLike (Like _) = True
           isLike _        = False
           (likes, noLikes) = span (isLike . declType) decls

@@ -37,21 +37,21 @@ guardTypeIs typ expr =
                 ("require " ++ show typ)
                 (T.texpr expr)
 
-inClass :: ClassFeature a body Expr => String -> Typ -> TypingBody body a
+-- inClass :: ClassFeature a body Expr => String -> Typ -> TypingBody body a
 inClass = inClass' resolveIFace
 
-inGenClass  :: ClassFeature a body Expr => 
-               String -> Typ -> TypingBody body a
+-- inGenClass  :: ClassFeature a body Expr => 
+--                String -> Typ -> TypingBody body a
 inGenClass   = inClass' lookupClass
 
-inClass' :: ClassFeature a body expr =>
+inClass' :: -- ClassFeature a body expr =>
             (Typ -> TypingBody body (AbsClas body expr))
             -> String
             -> Typ
-            -> TypingBody body a
+            -> TypingBody body FeatureEx
 inClass' lookupC fName t = do
   ci   <- lookupC t
-  maybeThrow (findFeature ci fName) $ "No Feature Found: " ++ fName
+  maybeThrow (findFeature ci fName) $ "No Feature Found: " ++ fName ++ " in " ++ show t ++ " with " ++ show (map (featureName :: FeatureEx -> String) (allFeatures ci))
 
 
 conformThrow :: TExpr -> Typ -> TypingBody body TExpr

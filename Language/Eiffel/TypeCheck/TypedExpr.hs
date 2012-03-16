@@ -2,8 +2,8 @@ module Language.Eiffel.TypeCheck.TypedExpr where
 
 import Control.Applicative
 
-import qualified Language.Eiffel.Syntax as E (UnPosExpr (..))
-import Language.Eiffel.Syntax hiding (UnPosExpr (..))
+import qualified Language.Eiffel.Syntax as E (UnPosExpr (..), ROp (..))
+import Language.Eiffel.Syntax hiding (UnPosExpr (..), ROp (..), UnOp (..))
 import Language.Eiffel.Position
 import Language.Eiffel.Util
 
@@ -14,13 +14,28 @@ type UnPosTStmt = AbsStmt TExpr
 
 type TExpr = Pos UnPosTExpr
 
+
+data EqOp = Eq | Neq | TildeEq | TildeNeq deriving (Show, Eq)
+
+eqOp (RelOp E.Eq _) = Eq
+eqOp (RelOp E.Neq _) = Neq
+eqOp (RelOp E.TildeEq _) = TildeEq
+eqOp (RelOp E.TildeNeq _) = TildeNeq
+
+binEqOp Eq = RelOp E.Eq NoType
+binEqOp Neq = RelOp E.Neq NoType
+binEqOp TildeEq = RelOp E.TildeEq NoType
+binEqOp TildeNeq = RelOp E.TildeNeq NoType
+
+
 data UnPosTExpr 
   = Call TExpr String [TExpr] Typ
   | Access TExpr String Typ
   | Agent TExpr
+  | Old TExpr
   | Var String Typ
-  | BinOpExpr BinOp TExpr TExpr Typ
-  | UnOpExpr UnOp TExpr Typ
+  | EqExpr EqOp TExpr TExpr
+  | CreateExpr Typ String [TExpr]
   | Attached (Maybe Typ) TExpr (Maybe String)
   | StaticCall Typ String [TExpr] Typ
   | Tuple [TExpr]
@@ -29,6 +44,7 @@ data UnPosTExpr
   | Box Typ TExpr
   | Unbox Typ TExpr
   | Cast Typ TExpr
+  | LitType Typ
   | LitArray [TExpr]
   | LitChar Char
   | LitString String
@@ -102,10 +118,8 @@ untypeExpr' (Cast t e)
     = contents $ untypeExpr e
 untypeExpr' (ResultVar _t)
     = E.ResultVar
-untypeExpr' (BinOpExpr op e1 e2 _)
-  = E.BinOpExpr op (untypeExpr e1) (untypeExpr e2)
-untypeExpr' (UnOpExpr op e _)
-  = E.UnOpExpr op (untypeExpr e)
+untypeExpr' (EqExpr op e1 e2)
+  = E.BinOpExpr (binEqOp op) (untypeExpr e1) (untypeExpr e2)
 untypeExpr' (Attached typ e asName)
   = E.Attached typ (untypeExpr e) asName
 untypeExpr' (Box _ e) = contents $ untypeExpr e
@@ -127,17 +141,19 @@ texprTyp (LitInt _)  = intType
 texprTyp (LitBool _) = boolType
 texprTyp (LitDouble _) = realType
 texprTyp (LitVoid  t) = t
+texprTyp (CreateExpr t _ _) = t
 texprTyp (Var _ t)   = t
 texprTyp (Cast t _)  = t
 texprTyp (ResultVar t) = t
 texprTyp (CurrentVar t) = t
 texprTyp (Call _ _ _ t) = t
 texprTyp (Access _ _ t) = t
-texprTyp (BinOpExpr _ _ _ t) = t
-texprTyp (UnOpExpr _ _ t) = t
+texprTyp (EqExpr{}) = boolType
 texprTyp (Box _ te) = texpr te
 texprTyp (Unbox t _) = t
+texprTyp (Old e) = texprTyp (contents e)
 texprTyp (StaticCall _ _ _ t) = t
 texprTyp (LitChar _) = charType
-texprTyp (Attached _ _ _) = boolType
+texprTyp (Attached{}) = boolType
 texprTyp (LitString _) = stringType
+texprTyp (LitType t) = ClassType "TYPE" [t]
