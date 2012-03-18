@@ -3,6 +3,8 @@ module Language.Eiffel.TypeCheck.Generic where
 import Control.Applicative
 import Control.Monad
 
+import Data.Maybe
+
 import Language.Eiffel.TypeCheck.Context
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 
@@ -38,11 +40,7 @@ resolveIFace :: Typ -> TypingBody body (AbsClas body Expr)
 resolveIFace t@(ClassType _ ts) = updateGenerics ts `fmap` lookupClass t
 resolveIFace (Like ident) = do
   T.CurrentVar t <- contents <$> currentM
-  cls <- lookupClass t
-  let Just feat = findFeatureEx cls ident
-      res = if ident == "Current"
-            then t 
-            else featureResult feat
+  res <- unlikeType t (Like ident)
   resolveIFace res
 resolveIFace (Sep _ _ t)  = resolveIFace (ClassType t [])
 resolveIFace t = error $ "resolveIFace: called on " ++ show t
@@ -77,3 +75,40 @@ updateTyp g t t'@(ClassType c' _)
     | g == c'   = t --ClassType  (map (updateTyp g t) gs)
     | otherwise = t'
 updateTyp _ _ t' = t'
+
+
+
+
+findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)
+findInParents typ name = do
+  cls <- lookupClass typ
+  case findFeatureEx cls name of
+    Just r -> return (Just r)
+    Nothing -> do
+      let notUndefined ih = 
+            name `notElem` concatMap undefine (inheritClauses ih)
+          validParents = filter notUndefined (inherit cls)
+          parentTypes = 
+            concatMap (map inheritClass . inheritClauses) validParents
+      res <- mapM (`findInParents` name) parentTypes
+      return (msum res)
+  
+
+unlike :: Typ -> Decl -> TypingBody ctxBody Decl
+unlike current (Decl n (Like ident)) = 
+  Decl n <$> unlikeType current (Like ident)
+unlike _ d =  return d
+
+unlikeType current (Like "Current") = return current
+unlikeType current (Like ident) = do
+  typeMb <- typeOfVar ident
+  case typeMb of
+    Just t -> return t
+    Nothing -> do 
+      featMb <- findInParents current ident
+      cls <- lookupClass current
+      let feat = fromMaybe (error $ "unlikeType: " ++ ident ++ 
+                                    " in " ++ show current)
+                           featMb
+      unlikeType current (featureResult feat)
+unlikeType _ t = return t

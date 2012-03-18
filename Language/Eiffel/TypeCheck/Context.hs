@@ -7,6 +7,7 @@ import Control.Monad.Error
 import Control.Monad.Identity
 import Control.Monad.Reader
 
+import Data.Char
 import Data.Map hiding (map, null)
 import Prelude hiding (lookup)
 
@@ -82,7 +83,7 @@ varCtx = fmap variables ask
 
 typeOfVar :: String -> TypingBody body (Maybe Typ)
 typeOfVar "Result" = (Just . result) `fmap` ask
-typeOfVar str = lookup str `fmap` varCtx 
+typeOfVar str = lookup (map toLower str) `fmap` varCtx 
 
 typeOfVar' :: String -> TypingBody body Typ
 typeOfVar' str 

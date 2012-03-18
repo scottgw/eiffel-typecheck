@@ -53,6 +53,15 @@ data UnPosTExpr
   | LitVoid Typ
   | LitDouble Double deriving (Show, Eq)
 
+
+-- showTyp t = "{" ++ show t ++ "}"
+
+-- instance Show UnPosTExpr where
+--   show (Call trg name args t) = 
+--     "(" ++ show trg ++ "." ++ name ++ " " ++ show args ++ showTyp t ++ ")"
+--   show (Cast typ expr) = "(" ++ showTyp typ ++ " " ++ show expr ++ ")"
+--   show (CurrentVar typ) = "(" ++ showTyp typ ++ " Current)"
+
 untype :: TClass -> Clas
 untype = classMapExprs untypeFeat untypeClause untypeConstant
 

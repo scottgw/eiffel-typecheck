@@ -15,6 +15,7 @@ import Language.Eiffel.Util
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 import Language.Eiffel.TypeCheck.TypedExpr (TStmt, TClass)
 import Language.Eiffel.TypeCheck.Context
+import Language.Eiffel.TypeCheck.Generic
 import Language.Eiffel.TypeCheck.Expr
 
 import Util.Monad
@@ -47,12 +48,6 @@ unlikeAbsClass unlikeImpl clas =
                 , routineResult = res
                 })
 
-unlikeDecls clsType decls = 
-  local (addDecls noLikes) (mapM (unlike clsType) decls)
-    where isLike (Like _) = True
-          isLike _        = False
-          (likes, noLikes) = span (isLike . declType) decls
-
 unlikeBody :: Typ -> RoutineBody expr -> 
               TypingBody ctxBody (RoutineBody expr)
 unlikeBody clas (RoutineBody locals procs body) = 
@@ -63,37 +58,43 @@ clasToType cls =
   let genType = flip ClassType [] . genericName
   in ClassType (className cls) (map genType $ generics cls)
 
-findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)
-findInParents typ name = do
-  cls <- lookupClass typ
-  case findFeatureEx cls name of
-    Just r -> return (Just r)
-    Nothing -> do
-      let notUndefined ih = 
-            name `notElem` concatMap undefine (inheritClauses ih)
-          validParents = filter notUndefined (inherit cls)
-          parentTypes = 
-            concatMap (map inheritClass . inheritClauses) validParents
-      res <- mapM (`findInParents` name) parentTypes
-      return (msum res)
+-- unlikeDecls clsType decls = 
+--   local (addDecls noLikes) (mapM (unlike clsType) decls)
+--     where isLike (Like _) = True
+--           isLike _        = False
+--           (likes, noLikes) = span (isLike . declType) decls
+
+-- findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)
+-- findInParents typ name = do
+--   cls <- lookupClass typ
+--   case findFeatureEx cls name of
+--     Just r -> return (Just r)
+--     Nothing -> do
+--       let notUndefined ih = 
+--             name `notElem` concatMap undefine (inheritClauses ih)
+--           validParents = filter notUndefined (inherit cls)
+--           parentTypes = 
+--             concatMap (map inheritClass . inheritClauses) validParents
+--       res <- mapM (`findInParents` name) parentTypes
+--       return (msum res)
   
 
-unlike :: Typ -> Decl -> TypingBody ctxBody Decl
-unlike current (Decl n (Like "Current")) = return (Decl n current)
-unlike current (Decl n (Like ident)) = do
-  typeMb <- typeOfVar ident
-  case typeMb of
-    Just t -> return (Decl n t)
-    Nothing -> do 
-      featMb <- findInParents current ident
-      cls <- lookupClass current
-      let feat = fromMaybe (error $ "unlike: " ++ n ++ ": like " ++ ident ++ 
-                                    " in " ++ show current)
-                           featMb
-      Decl _ resTyp <- unlike current (Decl "__unlike" $ featureResult feat)
-      return (Decl n resTyp)
-unlike _ d =  return d
-  
+-- unlike :: Typ -> Decl -> TypingBody ctxBody Decl
+-- unlike current (Decl n (Like "Current")) = return (Decl n current)
+-- unlike current (Decl n (Like ident)) = do
+--   typeMb <- typeOfVar ident
+--   case typeMb of
+--     Just t -> return (Decl n t)
+--     Nothing -> do 
+--       featMb <- findInParents current ident
+--       cls <- lookupClass current
+--       let feat = fromMaybe (error $ "unlike: " ++ n ++ ": like " ++ ident ++ 
+--                                     " in " ++ show current)
+--                            featMb
+--       Decl _ resTyp <- unlike current (Decl "__unlike" $ featureResult feat)
+--       return (Decl n resTyp)
+-- unlike _ d =  return d
+
 routineStmt :: RoutineBody Expr -> TypingBody body TStmt
 routineStmt = stmt . routineBody
 
@@ -101,7 +102,10 @@ routineStmt = stmt . routineBody
 routineEnv :: AbsRoutine body Expr
               -> TypingBody ctxBody a
               -> TypingBody ctxBody a
-routineEnv f = local (addDecls (routineArgs f) . setResult f)
+routineEnv f m = do
+  curr <- current <$> ask
+  dcls <- unlikeDecls curr (routineArgs f)
+  local (addDecls dcls . setResult f) m
  
 runTyping :: [AbsClas ctxBody Expr]
              -> AbsClas body expr
