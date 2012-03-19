@@ -6,7 +6,9 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Error
 
-import Language.Eiffel.Syntax
+import Data.List (find)
+
+import Language.Eiffel.Syntax as S
 import Language.Eiffel.Position
 import Language.Eiffel.Util
 
@@ -59,9 +61,25 @@ conformThrow expr t = do
   r <- conforms (T.texpr expr) t
   case r of
     Just f  -> return (f expr)
-    Nothing -> throwError (show expr ++ " doesn't conform to " ++ show t)
-    
+    Nothing -> do
+      conv <- convertsTo (T.texpr expr) t
+      case conv of
+        Nothing -> 
+          throwError (show expr ++ " doesn't conform or convert to " ++ show t)
+        Just f -> return (f expr)
 
+convertsTo :: Typ -> Typ -> TypingBody ctxBody (Maybe (TExpr -> TExpr))
+convertsTo fromType toType = do
+  cls <- lookupClass fromType
+  p <- currentPos
+  let convTo (ConvertTo name types) = toType `elem` types 
+      convTo _ = False 
+      converters = find convTo (S.converts cls)
+  case converters of
+    Nothing -> return Nothing
+    Just (ConvertTo name _) -> 
+      return $ Just $ \t -> attachPos p $ T.Call t name [] toType
+        
 
 conforms :: Typ -> Typ -> TypingBody body (Maybe (TExpr -> TExpr))
 conforms VoidType t
