@@ -172,6 +172,7 @@ expr (QualCall trg fName args) = do
   let staticType = T.texpr tTrg
       dynamicType = T.texpr trgUncasted
   
+  
   -- See if this qualified call is actually a class access, and
   -- either cast it to an access if it is one, or just return the
   -- fully casted call AST if it's really a call
@@ -279,24 +280,19 @@ lineageWith t pr =
   let
     anyT = ClassType "ANY" []
 
-    go typ renames lineage = 
-      do clas <- lookupClass typ
-         let clas' = renameAll renames clas
-             lin' = clas' : lineage
-         if pr clas'
-           then return (Just lin')
-           else do let inheritCast parentClause = do
-                         let parent = inheritClass parentClause
-                             rns = rename parentClause
-                         go parent rns lin'
-                   castsMb <- mapM inheritCast (allInherited clas')
-                   return (listToMaybe $ catMaybes castsMb)
+    go parentClause lineage = do
+      clas' <- rewriteGeneric t parentClause
+      let lin' = clas' : lineage
+      if pr clas'
+        then return (Just lin')
+        else do castsMb <- mapM (flip go lin') (allInherited clas')
+                return (listToMaybe $ catMaybes castsMb)
 
-  in do castMb <- go t [] []
+  in do castMb <- go (InheritClause t [] [] [] [] []) []
         case castMb of
           Just xs -> return (Just $ reverse xs)
           Nothing ->
-            do anyC <- lookupClass anyT
+            do anyC <- rewriteGeneric t (InheritClause anyT [] [] [] [] [])
                if pr anyC
                  then return $ Just [anyC]
                  else return $ Nothing
@@ -371,3 +367,18 @@ unlikeDecls clsType decls =
     where isLike (Like _) = True
           isLike _        = False
           (likes, noLikes) = span (isLike . declType) decls
+
+
+
+-- |Rewrites a inherited class. This performs renaming and generic
+-- instantiation, including "like Current" transformation.
+rewriteGeneric :: Typ -> InheritClause ->
+                  TypingBody ctxBody (AbsClas ctxBody Expr)
+rewriteGeneric current inherit = do
+  let typ@(ClassType name gens) = inheritClass inherit
+  cls <- lookupClass typ
+  let update = 
+        renameAll (rename inherit) .
+        updateGeneric (Like "Current") current . 
+        updateGenerics gens
+  return (update cls)

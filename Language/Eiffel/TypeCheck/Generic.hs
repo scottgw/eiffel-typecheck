@@ -45,11 +45,11 @@ resolveIFace (Like ident) = do
 resolveIFace (Sep _ _ t)  = resolveIFace (ClassType t [])
 resolveIFace t = error $ "resolveIFace: called on " ++ show t
 
-type GenUpd a = ClassName -> Typ -> a -> a
+type GenUpd a = Typ -> Typ -> a -> a
 
 updateGenerics :: [Typ] -> AbsClas body Expr -> AbsClas body Expr
 updateGenerics ts ci =
-    let gs = map genericName (generics ci)
+    let gs = map (\ gen -> ClassType (genericName gen) []) (generics ci)
         f  = foldl (.) id (zipWith updateGeneric gs ts)
     in f ci
 
@@ -71,8 +71,8 @@ updateDecl :: GenUpd Decl
 updateDecl g t (Decl n t') = Decl n (updateTyp g t t')
 
 updateTyp :: GenUpd Typ
-updateTyp g t t'@(ClassType c' _)
-    | g == c'   = t --ClassType  (map (updateTyp g t) gs)
+updateTyp g t t'
+    | g == t'   = t
     | otherwise = t'
 updateTyp _ _ t' = t'
 

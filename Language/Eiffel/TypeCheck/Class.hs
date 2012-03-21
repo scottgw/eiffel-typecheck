@@ -127,8 +127,17 @@ clas c rtnBodyCheck = do
     return $ c {featureClauses = fcs, invnts = invs}
 
 
-typeInterfaces :: [ClasInterface] -> Either String [AbsClas EmptyBody T.TExpr]
-typeInterfaces inters = mapM (\i -> runTyping inters i (interface i)) inters
+typeInterfaces :: [ClasInterface] -> 
+                  IO (Either String [AbsClas EmptyBody T.TExpr])
+typeInterfaces inters = 
+  let 
+    go :: ClasInterface -> IO (AbsClas EmptyBody T.TExpr)
+    go i = do print (className i)
+              case runTyping inters i (interface i) of
+                Left s -> error s
+                Right i -> return i
+  in do inters' <- mapM go inters
+        return (Right inters')
      
 
 interface :: AbsClas EmptyBody Expr 
