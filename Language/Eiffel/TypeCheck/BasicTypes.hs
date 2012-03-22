@@ -35,9 +35,10 @@ guardTypePred :: (Typ -> Bool) -> String -> Typ -> TypingBody body Typ
 guardTypePred p s t = guardThrow (p t) s >> return t
 
 guardTypeIs typ expr = 
-  guardTypePred (== typ)
-                ("require " ++ show typ)
-                (T.texpr expr)
+  let exprType = T.texpr expr
+  in guardTypePred (== typ) 
+                   ("require " ++ show typ ++ " actual " ++ show exprType)
+                   (T.texpr expr)
 
 -- inClass :: ClassFeature a body Expr => String -> Typ -> TypingBody body a
 inClass = inClass' resolveIFace

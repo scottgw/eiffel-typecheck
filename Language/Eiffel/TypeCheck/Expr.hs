@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Language.Eiffel.TypeCheck.Expr where
+module Language.Eiffel.TypeCheck.Expr 
+       (typeOfExpr, typeOfExprIs, clause, unlikeDecls) where
 
 import Control.Applicative
 import Control.Monad.Error
@@ -37,37 +38,11 @@ convertVarCall name = do
     Nothing -> 
       do vTyp <- typeOfVar name
          maybeTag (T.Var name <$> vTyp)
-    Just trg' -> compCall trg' name
+    Just trg' -> Just <$> expr (UnqualCall name []) -- compCall trg' name
 
 maybeTag :: Maybe a -> TypingBody ctxBody (Maybe (Pos a))
 maybeTag Nothing  = return Nothing
 maybeTag (Just x) = Just <$> tagPos x
-
-compCall :: TExpr -> String -> TypingBody ctxBody (Maybe TExpr)
-compCall trg name = do
-  cls <- resolveIFace (T.texpr trg)
-  curr <- current <$> ask
-  
-  clsRewritten <- lineageToName (T.texpr trg) name
-  
-  case clsRewritten of
-    Nothing -> return Nothing
-    Just classes -> 
-      let writtenClass = last classes
-      in case findFeatureEx writtenClass name of
-        Nothing -> return Nothing
-        Just f ->
-          if not (null $ featureArgs f)
-          then return Nothing
-          else do
-            resT <- unlikeType (T.texpr trg) (featureResult f)
-            if isJust (findAttrInt writtenClass name) || 
-               isJust (findConstantInt writtenClass name)
-              then maybeTag (Just $ T.Access trg name resT)
-              else do
-                r <- tagPos (T.Call trg name [] resT)
-                r' <- castResult (T.texpr trg) (T.texpr trg) name r
-                return (Just r')
 
 typeOfExpr :: Expr -> TypingBody body TExpr
 typeOfExpr e = setPosition (position e) 
@@ -164,35 +139,46 @@ expr (UnqualCall fName args) = do
                    <*> pure args
   expr qual
   
-expr (QualCall trg fName args) = do 
+expr (QualCall trg name args) = do 
   -- typecheck and cast the target if from a generic class
-  trgUncasted <- typeOfExpr trg
-  tTrg        <- castTarget trgUncasted fName
+  trg' <- typeOfExpr trg
+  args' <- mapM typeOfExpr args
   
-  let staticType = T.texpr tTrg
-      dynamicType = T.texpr trgUncasted
+  Just lineage <- lineageToName (T.texpr trg') name
+  -- if name == "twin" then error "twin!" else return ()
+  case findFeatureEx (last lineage) name of
+    Nothing -> error $ show trg' ++ ": " ++ name ++ show args'
+    Just feat -> do
+      let formArgs = map declType (featureArgs feat)
+          res = featureResult feat
+      argsConform args' formArgs
+      tagPos (T.Call trg' name args' res)
+  -- tTrg        <- castTarget trgUncasted fName
+  
+  -- let staticType = T.texpr tTrg
+  --     dynamicType = T.texpr trgUncasted
   
   
-  -- See if this qualified call is actually a class access, and
-  -- either cast it to an access if it is one, or just return the
-  -- fully casted call AST if it's really a call
-  accessMb <- compCall tTrg fName
-  case accessMb of
-    Just acc -> castAccess acc
-    Nothing  -> do 
-      -- see if the call is valid wth the args proposed
-      validCall staticType dynamicType fName args
+  -- -- See if this qualified call is actually a class access, and
+  -- -- either cast it to an access if it is one, or just return the
+  -- -- fully casted call AST if it's really a call
+  -- accessMb <- compCall tTrg fName
+  -- case accessMb of
+  --   Just acc -> castAccess acc
+  --   Nothing  -> do 
+  --     -- see if the call is valid wth the args proposed
+  --     validCall staticType dynamicType fName args
   
-      -- typecheck and cast the arguments if they come from a generic class
-      args' <- mapM typeOfExpr args
-      genArgs <- castGenericArgsM staticType dynamicType fName args'
+  --     -- typecheck and cast the arguments if they come from a generic class
+  --     args' <- mapM typeOfExpr args
+  --     genArgs <- castGenericArgsM staticType dynamicType fName args'
 
-      -- fetch the actual result, make a new call from it,
-      -- then cast the result if necessary
-      resultT <- featureResult <$> (fName `inClass` staticType)
+  --     -- fetch the actual result, make a new call from it,
+  --     -- then cast the result if necessary
+  --     resultT <- featureResult <$> (fName `inClass` staticType)
       
-      tCall <- tagPos (T.Call tTrg fName genArgs resultT)
-      castResult staticType dynamicType fName tCall
+  --     tCall <- tagPos (T.Call tTrg fName genArgs resultT)
+  --     castResult staticType dynamicType fName tCall
 expr (CreateExpr typ name args) = do
   -- this comes basically from the above 
   -- see if the call is valid wth the args proposed
@@ -218,15 +204,6 @@ validCall staticType dynamicType fName args =
     where instFDecl = fName `inClass` staticType
           formTypes = formalArgTypes dynamicType =<< instFDecl
           argTypes  = mapM typeOfExpr args
-
--- | Casts the target expression to the parent which contains the feature name.
--- Throws an exception if no parents contain the feature name.
-castTarget :: TExpr            -- ^ The target expression
-               -> String       -- ^ Feature to search for
-               -> TypingBody body TExpr -- ^ Casted target
-castTarget trg fname = do
-  castTrgMb <- castTargetM trg fname
-  maybe (throwError $ "castTarget error " ++ show (trg, fname)) return castTrgMb
 
 -- | Takes an expression and a feature name, possibly returning
 -- the expression casted to the parent which contains the feature.
@@ -297,13 +274,6 @@ lineageWith t pr =
                  then return $ Just [anyC]
                  else return $ Nothing
 
--- | If the target expr is an attribute access then lookup then possibly
--- cast or unbox the result in the case where the originating class is generic.
-castAccess :: TExpr -> TypingBody body TExpr
-castAccess a = case contents a of
-                 T.Access ta aName _ -> castResult (T.texpr ta) (T.texpr ta) aName a
-                 _ -> return a
-
 -- | Checks that a list of args conform to a list of types. Raises an error
 -- if the check fails.
 argsConform :: [TExpr]       -- ^ List of typed expressions
@@ -313,29 +283,6 @@ argsConform :: [TExpr]       -- ^ List of typed expressions
 argsConform args formArgs
     | length args /= length formArgs = throwError "Differing number of args"
     | otherwise = zipWithM_ conformThrow args formArgs
-
--- | Casts the return value of a function. If the yare the same,
--- there's no cast, but if one is a generic
-castReturnedValue :: Typ      -- ^ Instantiated type
-                     -> Typ   -- ^ Generic type
-                     -> TExpr -- ^ Expression of instantiated type
-                     -> TExpr -- ^ Possibly casted or boxed expression.
-castReturnedValue instanceTyp genericTyp
-    | instanceTyp == genericTyp  = id
-    | isBasic instanceTyp        = inheritPos (T.Unbox instanceTyp)
-    | otherwise                  = inheritPos (T.Cast instanceTyp)
-
-
-
-castResult :: Typ -> Typ -> String -> TExpr -> TypingBody body TExpr
-castResult staticType dynamicType featureName expr =
-  castReturnedValue <$> (res =<< inClass featureName staticType)
-                    <*> (res =<< inGenClass featureName staticType)
-                    <*> pure expr
-  where 
-    res = unlikeType dynamicType . featureResult
-  
-
 
 castGenericArgsM :: Typ -> Typ -> String -> [TExpr] -> TypingBody body [TExpr]
 castGenericArgsM staticType dynamicType fname args =
