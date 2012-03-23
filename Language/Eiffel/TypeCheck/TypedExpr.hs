@@ -2,7 +2,7 @@ module Language.Eiffel.TypeCheck.TypedExpr where
 
 import Control.Applicative
 
-import qualified Language.Eiffel.Syntax as E (UnPosExpr (..), ROp (..))
+import qualified Language.Eiffel.Syntax as E (UnPosExpr (..), ROp (..), UnOp (..))
 import Language.Eiffel.Syntax hiding (UnPosExpr (..), ROp (..), UnOp (..))
 import Language.Eiffel.Position
 import Language.Eiffel.Util
@@ -31,7 +31,7 @@ binEqOp TildeNeq = RelOp E.TildeNeq NoType
 data UnPosTExpr 
   = Call TExpr String [TExpr] Typ
   | Access TExpr String Typ
-  | Agent TExpr
+  | Agent TExpr String [TExpr] Typ
   | Old TExpr
   | Var String Typ
   | EqExpr EqOp TExpr TExpr
@@ -123,6 +123,7 @@ untypeExpr' (Var s _t)
     = E.VarOrCall s
 untypeExpr' (CurrentVar _t)
     = E.CurrentVar
+untypeExpr' (Old e) = E.UnOpExpr E.Old (untypeExpr e)
 untypeExpr' (Cast t e) 
     = contents $ untypeExpr e
 untypeExpr' (ResultVar _t)
@@ -146,11 +147,8 @@ texpr :: TExpr -> Typ
 texpr = texprTyp . contents
 
 texprTyp :: UnPosTExpr -> Typ
-texprTyp (LitInt _)  = intType
-texprTyp (LitBool _) = boolType
-texprTyp (LitDouble _) = realType
-texprTyp (LitVoid  t) = t
 texprTyp (CreateExpr t _ _) = t
+texprTyp (Agent _ _ _ t) = t
 texprTyp (Var _ t)   = t
 texprTyp (Cast t _)  = t
 texprTyp (ResultVar t) = t
@@ -166,3 +164,7 @@ texprTyp (LitChar _) = charType
 texprTyp (Attached{}) = boolType
 texprTyp (LitString _) = stringType
 texprTyp (LitType t) = ClassType "TYPE" [t]
+texprTyp (LitInt _)  = intType
+texprTyp (LitBool _) = boolType
+texprTyp (LitDouble _) = realType
+texprTyp (LitVoid  t) = t

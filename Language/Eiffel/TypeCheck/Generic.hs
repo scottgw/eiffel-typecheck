@@ -51,7 +51,8 @@ updateGenerics :: [Typ] -> AbsClas body Expr -> AbsClas body Expr
 updateGenerics ts ci =
     let gs = map (\ gen -> ClassType (genericName gen) []) (generics ci)
         f  = foldl (.) id (zipWith updateGeneric gs ts)
-    in f ci
+        newClass = f ci
+    in newClass { generics = [] }
 
 updateGeneric :: GenUpd (AbsClas body Expr) 
 updateGeneric g t = 
@@ -71,12 +72,17 @@ updateDecl :: GenUpd Decl
 updateDecl g t (Decl n t') = Decl n (updateTyp g t t')
 
 updateTyp :: GenUpd Typ
-updateTyp g t t'
-    | g == t'   = t
-    | otherwise = t'
-updateTyp _ _ t' = t'
-
-
+updateTyp g t t'@(ClassType name types)
+  | g == t' = t
+  | otherwise = ClassType name (map (updateTyp g t) types)
+updateTyp g t t'@(TupleType typesOrDecls)
+  | g == t' = t
+  | otherwise = case typesOrDecls of
+    Left types -> TupleType (Left $ map (updateTyp g t) types)
+    Right decls -> TupleType (Right $ map (updateDecl g t) decls)
+updateTyp g t t' 
+  | g == t' = t
+  | otherwise =  t'
 
 
 findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)

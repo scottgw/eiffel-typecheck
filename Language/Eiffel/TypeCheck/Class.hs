@@ -1,5 +1,5 @@
 module Language.Eiffel.TypeCheck.Class 
-       (clas, clasM, typeInterfaces, typedPre, unlikeInterfaceM, runTyping) where
+       (clas, clasM, typeInterfaces, typedPre, runTyping) where
 
 import Control.Applicative
 import Control.Monad.Reader
@@ -22,41 +22,7 @@ import Util.Monad
 
 traceShow' x = traceShow x x
 
-unlikeInterfaceM inters clas = runTyping inters clas (unlikeInterface clas)
-
-unlikeClass = unlikeAbsClass unlikeBody
-unlikeInterface = unlikeAbsClass (const return)
-
-unlikeAbsClass :: (Typ -> body -> TypingBody ctxBody body) -> 
-                  AbsClas body expr -> 
-                  TypingBody ctxBody (AbsClas body expr)
-unlikeAbsClass unlikeImpl clas =
-  classMapAttributesM unlikeAttr clas >>= classMapRoutinesM unlikeRoutine
-  where
-    clsType = clasToType clas
-    unlike' = unlike clsType
-    unlikeAttr a = do
-      dcls <- unlike' (attrDecl a)
-      return (a { attrDecl = dcls})
-    unlikeRoutine r = do
-      args <- unlikeDecls clsType (routineArgs r)
-      impl <- unlikeImpl clsType (routineImpl r)
-      Decl _ res  <- local (addDecls args) 
-                           (unlike' (Decl "__unlikeRoutine" $ routineResult r))
-      return (r { routineArgs = args
-                , routineImpl = impl
-                , routineResult = res
-                })
-
-unlikeBody :: Typ -> RoutineBody expr -> 
-              TypingBody ctxBody (RoutineBody expr)
-unlikeBody clas (RoutineBody locals procs body) = 
-  RoutineBody <$> mapM (unlike clas) locals <*> pure procs <*> pure body
-unlikeBody _ b = return b
-                      
-clasToType cls = 
-  let genType = flip ClassType [] . genericName
-  in ClassType (className cls) (map genType $ generics cls)
+-- unlikeInterfaceM inters clas = runTyping inters clas (unlikeInterface clas)
 
 -- unlikeDecls clsType decls = 
 --   local (addDecls noLikes) (mapM (unlike clsType) decls)

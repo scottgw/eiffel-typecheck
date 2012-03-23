@@ -31,6 +31,11 @@ isNum t = isDouble t || isInt t
 
 isBool = (== boolType)
 
+
+numericCanBe (T.LitInt i) t =
+  isNaturalType t && i >= 0
+numericCanBe _ _ = False
+
 guardTypePred :: (Typ -> Bool) -> String -> Typ -> TypingBody body Typ
 guardTypePred p s t = guardThrow (p t) s >> return t
 
