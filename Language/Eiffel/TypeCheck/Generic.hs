@@ -40,8 +40,8 @@ resolveIFace :: Typ -> TypingBody body (AbsClas body Expr)
 resolveIFace t@(ClassType _ ts) = updateGenerics ts `fmap` lookupClass t
 resolveIFace (Like ident) = do
   T.CurrentVar t <- contents <$> currentM
-  res <- unlikeType t (Like ident)
-  resolveIFace res
+  -- res <- lookupClass t --unlikeType t (Like ident)
+  resolveIFace t
 resolveIFace (Sep _ _ t)  = resolveIFace (ClassType t [])
 resolveIFace t = error $ "resolveIFace: called on " ++ show t
 
@@ -52,7 +52,7 @@ updateGenerics ts ci =
     let gs = map (\ gen -> ClassType (genericName gen) []) (generics ci)
         f  = foldl (.) id (zipWith updateGeneric gs ts)
         newClass = f ci
-    in newClass { generics = [] }
+    in newClass -- { generics = [] }
 
 updateGeneric :: GenUpd (AbsClas body Expr) 
 updateGeneric g t = 
@@ -84,37 +84,17 @@ updateTyp g t t'
   | g == t' = t
   | otherwise =  t'
 
+unlike current clas (Decl n (Like ident)) = 
+  Decl n <$> unlikeType current clas (Like ident)
+unlike _ _ d =  return d
 
-findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)
-findInParents typ name = do
-  cls <- lookupClass typ
-  case findFeatureEx cls name of
-    Just r -> return (Just r)
-    Nothing -> do
-      let notUndefined ih = 
-            name `notElem` concatMap undefine (inheritClauses ih)
-          validParents = filter notUndefined (inherit cls)
-          parentTypes = 
-            concatMap (map inheritClass . inheritClauses) validParents
-      res <- mapM (`findInParents` name) parentTypes
-      return (msum res)
-  
-
-unlike :: Typ -> Decl -> TypingBody ctxBody Decl
-unlike current (Decl n (Like ident)) = 
-  Decl n <$> unlikeType current (Like ident)
-unlike _ d =  return d
-
-unlikeType current (Like "Current") = return current
-unlikeType current (Like ident) = do
+unlikeType current clas (Like "Current") = return current
+unlikeType current clas (Like ident) = do
   typeMb <- typeOfVar ident
-  case typeMb of
-    Just t -> return t
-    Nothing -> do 
-      featMb <- findInParents current ident
-      cls <- lookupClass current
-      let feat = fromMaybe (error $ "unlikeType: " ++ ident ++ 
-                                    " in " ++ show current)
-                           featMb
-      unlikeType current (featureResult feat)
-unlikeType _ t = return t
+  pos <- currentPos
+  case (featureResult <$> findFeatureEx clas ident) <|> typeMb of
+    Nothing -> error $ "unlikeType: can't find " ++ ident ++ 
+                       " in " ++ show current ++ "," ++ show pos
+    Just resT -> unlikeType current clas resT
+unlikeType current clas (ClassType name gs) = 
+  ClassType name <$> mapM (unlikeType current clas) gs

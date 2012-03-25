@@ -6,10 +6,11 @@ module Language.Eiffel.TypeCheck.Context where
 import Control.Monad.Error
 import Control.Monad.Identity
 import Control.Monad.Reader
+import Control.Monad.State
 
 import Data.Char
-import Data.Map hiding (map, null)
-import Prelude hiding (lookup)
+import qualified Data.Map as Map
+import Data.Map (Map)
 
 import Language.Eiffel.Syntax
 import Language.Eiffel.Position
@@ -28,13 +29,16 @@ data TypeContext body = TypeContext {
       pos        :: SourcePos
     }
 
+type FlatMap body = Map Typ (AbsClas body Expr)
+
 type TypeError = ErrorT String Identity
-type TypingBody body = ReaderT (TypeContext body) TypeError
+type FlatLookup body = StateT (FlatMap body) TypeError
+type TypingBody body = ReaderT (TypeContext body) (FlatLookup body)
 type Typing = TypingBody (RoutineBody Expr)
 
 instance HasClasEnv (TypeContext body) body where
     classEnv = interfaces
-    update tc c = tc {interfaces = insert (className c) c (interfaces tc)}
+    update tc c = tc {interfaces = Map.insert (className c) c (interfaces tc)}
 instance ClassReader (TypeContext body) (TypingBody body) body
 
 currentPos :: TypingBody body SourcePos
@@ -47,7 +51,15 @@ setPosition :: SourcePos -> TypingBody body a -> TypingBody body a
 setPosition p = local (\ c -> c {pos = p})
 
 idErrorRead :: TypingBody body a -> TypeContext body -> Either String a
-idErrorRead m = runIdentity . runErrorT . runReaderT m
+idErrorRead ctx = 
+  runIdentity . runErrorT . fmap fst . flip runStateT Map.empty . runReaderT ctx
+
+
+addFlat :: Typ -> AbsClas body Expr -> TypingBody body ()
+addFlat t flat = lift (modify (Map.insert t flat))
+
+getFlat :: Typ -> TypingBody body (Maybe (AbsClas body Expr))
+getFlat t = lift (gets (Map.lookup t))
 
 guardThrow :: Bool -> String -> TypingBody body ()
 guardThrow False = throwErrorPos
@@ -74,7 +86,7 @@ mkCtx currTyp cs =
       interfaces = clasMap cs
     , current = currTyp 
     , result = error "mkCtx: no Result"
-    , variables = empty -- attrMap c
+    , variables = Map.empty -- attrMap c
     , pos = error "mkCtx: no position"
     }
 
@@ -83,7 +95,7 @@ varCtx = fmap variables ask
 
 typeOfVar :: String -> TypingBody body (Maybe Typ)
 typeOfVar "Result" = (Just . result) `fmap` ask
-typeOfVar str = lookup (map toLower str) `fmap` varCtx 
+typeOfVar str = Map.lookup (map toLower str) `fmap` varCtx 
 
 typeOfVar' :: String -> TypingBody body Typ
 typeOfVar' str 
@@ -95,7 +107,7 @@ typeOfVar' str
                throwErrorPos (concat ["Variable not found: ", str, ".", show m])
 
 addDeclsToMap :: [Decl] -> Map String Typ -> Map String Typ
-addDeclsToMap = union . declsToMap
+addDeclsToMap = Map.union . declsToMap
 
 addDecls :: [Decl] -> TypeContext body -> TypeContext body
 addDecls ds ctx = ctx {variables = addDeclsToMap ds (variables ctx)}

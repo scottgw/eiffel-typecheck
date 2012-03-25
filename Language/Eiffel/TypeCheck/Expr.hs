@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 
 module Language.Eiffel.TypeCheck.Expr 
-       (typeOfExpr, typeOfExprIs, clause, unlikeDecls) where
+       (typeOfExpr, typeOfExprIs, clause, unlikeDecls, flatten) where
 
 import Control.Applicative
 import Control.Monad.Error
@@ -24,6 +24,15 @@ import Language.Eiffel.TypeCheck.Context
 import Language.Eiffel.TypeCheck.Generic
 
 import Util.Monad
+
+debug' str x = do
+  typ <- current <$> ask
+  case typ of
+    ClassType cName _ ->
+      if cName == str 
+      then trace ("Tracing " ++ cName) x
+      else x
+    _ -> x
 
 clause :: Clause Expr -> TypingBody body (Clause TExpr)
 clause (Clause n e) =
@@ -57,7 +66,7 @@ typeOfExprIs typ expr = do
   _  <- guardTypeIs typ e'
   return e'
 
-expr :: UnPosExpr -> TypingBody body TExpr
+expr :: forall body . UnPosExpr -> TypingBody body TExpr
 expr (LitInt i)    = tagPos (T.LitInt i)
 expr (LitDouble d) = tagPos (T.LitDouble d)
 expr (LitBool b)   = tagPos (T.LitBool b)
@@ -68,7 +77,8 @@ expr CurrentVar    = currentM
 expr ResultVar     = do
   res <- result <$> ask
   curr <- current <$> ask
-  unlikedRes <- unlikeType curr res
+  flatClas <- flatten curr
+  unlikedRes <- unlikeType curr flatClas res
   tagPos (T.ResultVar unlikedRes)
 expr (StaticCall typ name args) = do
   flatClas <- flatten typ
@@ -89,7 +99,12 @@ expr (VarOrCall s) = do
 expr (Attached typeMb attch asMb) = do
   --TODO: Decide if we have to do any checking between typeMb and attch
   attch' <- typeOfExpr attch
-  tagPos $ T.Attached typeMb attch' asMb
+  curr <- current <$> ask
+  flatClas <- flatten curr
+  typeMb' <- case typeMb of
+      Nothing -> return Nothing 
+      Just typ -> Just <$> unlikeType curr flatClas typ
+  tagPos $ T.Attached typeMb' attch' asMb
 
 expr (UnOpExpr op e)
   | op == Old = do
@@ -110,21 +125,28 @@ expr (BinOpExpr op e1 e2)
     e2' <- typeOfExpr e2
     tagPos (T.EqExpr (T.eqOp op) e1' e2')
   | otherwise = do
-    e1' <- typeOfExpr e1
-    let extraLocals = \ m -> 
-          case contents e1' of
-            T.Attached _typeMb attch asMb ->
-              let attTyp = T.texpr attch
-              in case asMb of 
-                Just as -> do curr <- current `fmap` ask
-                              dcl <- unlike curr (Decl as attTyp)
-                              local (addDecls [dcl]) m
-                Nothing -> m
-            _ -> m
-    flatCls <- flatten (T.texpr e1')
-    -- castMb <- castTargetWith (T.texpr e1') 
-    --                          (\c -> isJust $ findOperator c (opAlias op) 1)
+    e1' <- debug' "ARRAY" $ typeOfExpr e1
 
+    let
+      attLocals :: Maybe Typ -> T.TExpr -> Maybe String ->
+                   TypingBody body a -> TypingBody body a
+      attLocals typeMb attch asMb m =
+        let attTyp = fromMaybe (T.texpr attch) typeMb
+        in case asMb of 
+          Just as -> local (addDecls [Decl as attTyp]) m
+          Nothing -> m
+
+      extraLocals :: TypingBody body a -> TypingBody body a
+      extraLocals =
+          case contents e1' of
+            T.Attached typeMb attch asMb -> attLocals typeMb attch asMb
+            T.Call trg "negated" [] _ -> case contents trg of
+              T.Attached typeMb attch asNameMb -> \ m ->
+                do attTypeMb <- maybe (return Nothing) typeOfVar asNameMb
+                   maybe (attLocals typeMb attch asNameMb m) (const m) attTypeMb
+              _ -> id
+            _ -> id
+    flatCls <- flatten (T.texpr e1')
     case findOperator flatCls (opAlias op) 1 of
       Nothing -> throwError $ "Operator " ++ show op ++ " not found"
       Just feat -> extraLocals (expr $ QualCall e1 (featureName feat) [e2])
@@ -139,11 +161,20 @@ expr (QualCall trg name args) = do
   -- typecheck and cast the target if from a generic class
   trg' <- typeOfExpr trg
   args' <- mapM typeOfExpr args
-  
-  let targetType = T.texpr trg'
-  flatCls  <- flatten targetType
 
-  case findFeatureEx flatCls name of
+  let targetType = T.texpr trg'
+  curr <- current <$> ask
+
+  let inArray = case curr of
+        ClassType "ARRAY" _ -> False -- True
+        _ -> False
+      dbg str x = if inArray then trace str x else x
+
+  flatCls  <- if inArray 
+              then currentPos >>= \p -> trace (show p ++ "," ++ name ++ ":" ++ show targetType) $ flatten targetType 
+              else flatten targetType
+  
+  case dbg ("findFeatureEx: " ++ name) $ findFeatureEx flatCls name of
     Nothing -> throwError $ "expr.QualCall: " ++ show trg' ++ ": " ++ name ++ show args' ++ show (map featureName $ allRoutines flatCls)
     Just feat ->
       let formArgs = map declType (featureArgs feat)
@@ -157,17 +188,17 @@ expr (QualCall trg name args) = do
                if contents arg `numericCanBe` targetType
                then do -- check to see if the numeric types can 
                        -- be casted to one another
-                 arg' <- tagPos (T.Cast targetType arg)
+                 arg' <- dbg "first if" $ tagPos (T.Cast targetType arg)
                  tagPos (T.Call trg' name [arg'] res)
                else if contents trg' `numericCanBe` T.texpr arg 
                     then do 
-                      trg'' <- tagPos (T.Cast (T.texpr arg) trg')
+                      trg'' <- dbg "second if" $ tagPos (T.Cast (T.texpr arg) trg')
                       tagPos (T.Call trg'' name [arg] res)
-                    else -- throwError $ e ++ " AND! " ++ show (trg',name,args, targetType, formArgs, map (\f -> (featureName f, featureArgs f)) $ allRoutines flatCls)
-                      catchError (
-                        do castedTrg <- conformThrow trg' (T.texpr arg)
-                           expr (QualCall (T.untypeExpr castedTrg) name args))
-                        (\ _ -> throwError $ e ++ " AND! " ++ show (trg',name,args, targetType))
+                    else throwError $ e ++ " AND! " ++ show (trg',name,args, targetType) -- throwError $ e ++ " AND! " ++ show (trg',name,args, targetType, formArgs, map (\f -> (featureName f, featureArgs f)) $ allRoutines flatCls)
+                      -- catchError (
+                      --   do castedTrg <- conformThrow trg' (T.texpr arg)
+                      --      expr (QualCall (T.untypeExpr castedTrg) name args))
+                      --   (\ _ -> throwError $ e ++ " AND! " ++ show (trg',name,args, targetType))
              _ -> throwError e
          )
 expr (CreateExpr typ name args) = do
@@ -213,15 +244,19 @@ expr (Agent e) = do
           t -> ClassType "FUNCTION" [anyType, agentArgTypes, t]
       in tagPos (T.Agent trg name args' agentType)
 
+expr (ManifestCast t e) = do
+  e' <- typeOfExpr e
+  tagPos (T.Cast t e')
+
 expr t = throwError ("TypeCheck.Expr.expr: " ++ show t)
 
 -- | A call is valid if its arguments all typecheck and conform to the
 -- formals, and the name exists in the class.
-validCall :: Typ -> Typ -> String -> [Expr] -> TypingBody body ()
-validCall staticType dynamicType fName args = 
+-- validCall :: Typ -> Typ -> String -> [Expr] -> TypingBody body ()
+validCall staticType dynamicType clas fName args = 
   join (argsConform <$> argTypes <*> formTypes)
     where instFDecl = fName `inClass` staticType
-          formTypes = formalArgTypes dynamicType =<< instFDecl
+          formTypes = formalArgTypes dynamicType clas =<< instFDecl
           argTypes  = mapM typeOfExpr args
 
 -- | Takes an expression and a feature name, possibly returning
@@ -301,10 +336,9 @@ argsConform args formArgs
     | length args /= length formArgs = throwError "Differing number of args"
     | otherwise = zipWithM_ conformThrow args formArgs
 
-castGenericArgsM :: Typ -> Typ -> String -> [TExpr] -> TypingBody body [TExpr]
-castGenericArgsM staticType dynamicType fname args =
+castGenericArgsM staticType dynamicType clas fname args =
   zipWith castToStatic args <$> 
-      (formalArgDecls dynamicType =<< fname `inClass` staticType)
+      (formalArgDecls dynamicType clas =<< fname `inClass` staticType)
 
 castToStatic :: TExpr -> Decl -> TExpr
 castToStatic te (Decl _ t@(ClassType _ _))
@@ -317,17 +351,17 @@ castToStatic te _ = te
 
 
 
-formalArgTypes :: Typ -> FeatureEx -> TypingBody ctxBody [Typ]
-formalArgTypes dynamicType = 
-  mapM (return . declType) <=< formalArgDecls dynamicType
+-- formalArgTypes :: Typ -> FeatureEx -> TypingBody ctxBody [Typ]
+formalArgTypes dynamicType clas = 
+  mapM (return . declType) <=< formalArgDecls dynamicType clas
 
-formalArgDecls :: Typ -> FeatureEx -> TypingBody ctxBody [Decl]
-formalArgDecls dynamicType = unlikeDecls dynamicType . featureArgs
+-- formalArgDecls :: Typ -> FeatureEx -> TypingBody ctxBody [Decl]
+formalArgDecls dynamicType clas = unlikeDecls dynamicType clas . featureArgs
 
 
-unlikeDecls :: Typ -> [Decl] -> TypingBody ctxBody [Decl]
-unlikeDecls clsType decls = 
-  local (addDecls noLikes) (mapM (unlike clsType) decls)
+-- unlikeDecls :: Typ -> [Decl] -> TypingBody ctxBody [Decl]
+unlikeDecls clsType clas decls = 
+  local (addDecls noLikes) (mapM (unlike clsType clas) decls)
     where isLike (Like _) = True
           isLike _        = False
           (likes, noLikes) = span (isLike . declType) decls
@@ -335,22 +369,19 @@ unlikeDecls clsType decls =
 
 
 unlikeClass = unlikeAbsClass unlikeBody
-unlikeInterface = unlikeAbsClass (const return)
+unlikeInterface = unlikeAbsClass (\ _ _ x -> return x)
 
-unlikeAbsClass :: (Typ -> body -> TypingBody ctxBody body) -> 
-                  AbsClas body expr -> 
-                  TypingBody ctxBody (AbsClas body expr)
 unlikeAbsClass unlikeImpl clas =
   classMapAttributesM unlikeAttr clas >>= classMapRoutinesM unlikeRoutine
   where
     clsType = clasToType clas
-    unlike' = unlike clsType
+    unlike' = unlike clsType clas
     unlikeAttr a = do
       dcls <- unlike' (attrDecl a)
       return (a { attrDecl = dcls})
     unlikeRoutine r = do
-      args <- unlikeDecls clsType (routineArgs r)
-      impl <- unlikeImpl clsType (routineImpl r)
+      args <- unlikeDecls clsType clas (routineArgs r)
+      impl <- unlikeImpl clsType clas (routineImpl r)
       Decl _ res  <- local (addDecls args) 
                            (unlike' (Decl "__unlikeRoutine" $ routineResult r))
       return (r { routineArgs = args
@@ -358,11 +389,9 @@ unlikeAbsClass unlikeImpl clas =
                 , routineResult = res
                 })
 
-unlikeBody :: Typ -> RoutineBody expr -> 
-              TypingBody ctxBody (RoutineBody expr)
-unlikeBody clas (RoutineBody locals procs body) = 
-  RoutineBody <$> mapM (unlike clas) locals <*> pure procs <*> pure body
-unlikeBody _ b = return b
+unlikeBody typ clas (RoutineBody locals procs body) = 
+  RoutineBody <$> mapM (unlike typ clas) locals <*> pure procs <*> pure body
+unlikeBody _ _ b = return b
                       
 clasToType cls = 
   let genType = flip ClassType [] . genericName
@@ -389,10 +418,27 @@ flatten typ  =
                        (allInherited clas)
       mergeClasses <$> (clas:) <$> mapM go ihts
   in do
-    clas' <- trace' "Flatten!!!" (go (inheritType typ))
-    clasWithAny <- go (inheritType anyType)
-    let clas'' = updateGeneric (Like "Current") typ (mergeClass clas' clasWithAny)
-    unlikeInterface clas''
+    curr <- current <$> ask
+    -- we should get the real type, but to do that we may have to unroll
+    -- the 'like' parameters, which are defined on currrent.
+    -- therefore we have to flatten current! to prevent infinite recursion,
+    -- we test if the type we're after is current, if so we take that as 
+    -- the final type
+    typ' <- if typ == curr
+            then return typ 
+            else do currFlat <- flatten curr
+                    unlikeType curr currFlat typ
+    flatMb <- getFlat typ'
+    case flatMb of
+      Nothing -> do
+        clas' <- trace' "Flatten!!!" (go (inheritType typ'))
+        clasWithAny <- go (inheritType anyType)
+        let clas'' = updateGeneric (Like "Current") typ' (mergeClass clas' clasWithAny)
+        final <- unlikeInterface clas''
+        addFlat typ' final
+        return final
+      Just flat -> return flat
+    
     
     
 trace' s e
@@ -403,17 +449,32 @@ trace' s e
 -- instantiation, including "like Current" transformation.
 rewriteWithInherit :: InheritClause ->
                       TypingBody ctxBody (AbsClas ctxBody Expr)
-rewriteWithInherit inherit = do
-  let typ@(ClassType name gens) = inheritClass inherit
-  cls <- lookupClass typ
-  let update =
-        undefineAll inherit .
-        renameAll (rename inherit) .
-        updateGenerics gens
+rewriteWithInherit inherit = 
+  case inheritClass inherit of
+    typ@(ClassType name gens) -> do
+      cls <- lookupClass typ
+      let update =
+            updateGenerics gens . 
+            undefineAll inherit .
+            renameAll (rename inherit)
         -- updateGeneric (Like "Current") current .
         -- 
-      cls' = update cls
-  return cls'
+          
+          cls' = update cls
+      return cls'
+    TupleType _ -> do
+      cls <- lookupClass (ClassType "TUPLE" [])
+      let update =
+            updateGenerics [] . 
+            undefineAll inherit .
+            renameAll (rename inherit)
+        -- updateGeneric (Like "Current") current .
+        -- 
+          
+          cls' = update cls
+      return cls'
+
+    t -> error $ "rewriteWithInherit: " ++ show (t, inherit)
   -- unlikeInterface cls'
   -- if name == "ARRAY" && gens == [ClassType "K" []]
   --   then trace (show 

@@ -70,7 +70,8 @@ routineEnv :: AbsRoutine body Expr
               -> TypingBody ctxBody a
 routineEnv f m = do
   curr <- current <$> ask
-  dcls <- unlikeDecls curr (routineArgs f)
+  clas <- flatten curr
+  dcls <- unlikeDecls curr clas (routineArgs f)
   local (addDecls dcls . setResult f) m
  
 runTyping :: [AbsClas ctxBody Expr]

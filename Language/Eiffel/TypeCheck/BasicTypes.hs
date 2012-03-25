@@ -31,10 +31,21 @@ isNum t = isDouble t || isInt t
 
 isBool = (== boolType)
 
-
-numericCanBe (T.LitInt i) t =
-  isNaturalType t && i >= 0
-numericCanBe _ _ = False
+numericCanBe (T.LitInt 0) t =
+  isIntegerType t || isNaturalType t || isRealType t
+numericCanBe (T.LitInt i) t
+  | isIntegerType t || isNaturalType t =
+    let (lower, upper) = typeBounds t
+    in lower <= fromIntegral i && fromIntegral i <= upper
+  | otherwise = False
+numericCanBe exp t 
+  | T.texprTyp exp == (ClassType "INTEGER_32" []) &&
+    (t == (ClassType "REAL_64" []) || t == (ClassType "REAL_32" [])) = True
+  | T.texprTyp exp == (ClassType "INTEGER_32" []) &&
+    t == (ClassType "INTEGER_64" []) = True
+  | T.texprTyp exp == (ClassType "IMMUTABLE_STRING_8" []) &&
+    t == (ClassType "STRING_8" []) = True
+  | otherwise = False
 
 guardTypePred :: (Typ -> Bool) -> String -> Typ -> TypingBody body Typ
 guardTypePred p s t = guardThrow (p t) s >> return t
@@ -93,6 +104,8 @@ conforms VoidType t
     | otherwise = return (Just (inheritPos (T.Cast t)))
 conforms (Sep _ _ t1) (Sep _ _ t2) = 
     conforms (ClassType t1 []) (ClassType t2 [])
+conforms (TupleType typesDecls1) tup@(TupleType typeDecls2)
+    | either null null typesDecls1 = return (Just $ inheritPos (T.Cast tup))
 conforms _t VoidType = return Nothing
 conforms _ t | t == anyType = return $ Just $ inheritPos (T.Cast anyType)
 conforms t1 t2
