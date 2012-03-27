@@ -1,12 +1,8 @@
 module Language.Eiffel.TypeCheck.Class 
-       (clas, clasM, typeInterfaces, typedPre, unlikeInterfaceM, runTyping) where
+       (clas, clasM, typeInterfaces, typedPre, runTyping) where
 
 import Control.Applicative
 import Control.Monad.Reader
-
-import Data.Maybe
-
-import Debug.Trace
 
 import Language.Eiffel.Syntax
 import Language.Eiffel.Position
@@ -15,85 +11,7 @@ import Language.Eiffel.Util
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 import Language.Eiffel.TypeCheck.TypedExpr (TStmt, TClass)
 import Language.Eiffel.TypeCheck.Context
-import Language.Eiffel.TypeCheck.Generic
 import Language.Eiffel.TypeCheck.Expr
-
-import Util.Monad
-
-traceShow' x = traceShow x x
-
-unlikeInterfaceM inters clas = runTyping inters clas (unlikeInterface clas)
-
-unlikeClass = unlikeAbsClass unlikeBody
-unlikeInterface = unlikeAbsClass (const return)
-
-unlikeAbsClass :: (Typ -> body -> TypingBody ctxBody body) -> 
-                  AbsClas body expr -> 
-                  TypingBody ctxBody (AbsClas body expr)
-unlikeAbsClass unlikeImpl clas =
-  classMapAttributesM unlikeAttr clas >>= classMapRoutinesM unlikeRoutine
-  where
-    clsType = clasToType clas
-    unlike' = unlike clsType
-    unlikeAttr a = do
-      dcls <- unlike' (attrDecl a)
-      return (a { attrDecl = dcls})
-    unlikeRoutine r = do
-      args <- unlikeDecls clsType (routineArgs r)
-      impl <- unlikeImpl clsType (routineImpl r)
-      Decl _ res  <- local (addDecls args) 
-                           (unlike' (Decl "__unlikeRoutine" $ routineResult r))
-      return (r { routineArgs = args
-                , routineImpl = impl
-                , routineResult = res
-                })
-
-unlikeBody :: Typ -> RoutineBody expr -> 
-              TypingBody ctxBody (RoutineBody expr)
-unlikeBody clas (RoutineBody locals procs body) = 
-  RoutineBody <$> mapM (unlike clas) locals <*> pure procs <*> pure body
-unlikeBody _ b = return b
-                      
-clasToType cls = 
-  let genType = flip ClassType [] . genericName
-  in ClassType (className cls) (map genType $ generics cls)
-
--- unlikeDecls clsType decls = 
---   local (addDecls noLikes) (mapM (unlike clsType) decls)
---     where isLike (Like _) = True
---           isLike _        = False
---           (likes, noLikes) = span (isLike . declType) decls
-
--- findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)
--- findInParents typ name = do
---   cls <- lookupClass typ
---   case findFeatureEx cls name of
---     Just r -> return (Just r)
---     Nothing -> do
---       let notUndefined ih = 
---             name `notElem` concatMap undefine (inheritClauses ih)
---           validParents = filter notUndefined (inherit cls)
---           parentTypes = 
---             concatMap (map inheritClass . inheritClauses) validParents
---       res <- mapM (`findInParents` name) parentTypes
---       return (msum res)
-  
-
--- unlike :: Typ -> Decl -> TypingBody ctxBody Decl
--- unlike current (Decl n (Like "Current")) = return (Decl n current)
--- unlike current (Decl n (Like ident)) = do
---   typeMb <- typeOfVar ident
---   case typeMb of
---     Just t -> return (Decl n t)
---     Nothing -> do 
---       featMb <- findInParents current ident
---       cls <- lookupClass current
---       let feat = fromMaybe (error $ "unlike: " ++ n ++ ": like " ++ ident ++ 
---                                     " in " ++ show current)
---                            featMb
---       Decl _ resTyp <- unlike current (Decl "__unlike" $ featureResult feat)
---       return (Decl n resTyp)
--- unlike _ d =  return d
 
 routineStmt :: RoutineBody Expr -> TypingBody body TStmt
 routineStmt = stmt . routineBody
@@ -104,7 +22,8 @@ routineEnv :: AbsRoutine body Expr
               -> TypingBody ctxBody a
 routineEnv f m = do
   curr <- current <$> ask
-  dcls <- unlikeDecls curr (routineArgs f)
+  cls <- flatten curr
+  dcls <- unlikeDecls curr cls (routineArgs f)
   local (addDecls dcls . setResult f) m
  
 runTyping :: [AbsClas ctxBody Expr]
@@ -127,8 +46,17 @@ clas c rtnBodyCheck = do
     return $ c {featureClauses = fcs, invnts = invs}
 
 
-typeInterfaces :: [ClasInterface] -> Either String [AbsClas EmptyBody T.TExpr]
-typeInterfaces inters = mapM (\i -> runTyping inters i (interface i)) inters
+typeInterfaces :: [ClasInterface] -> 
+                  IO (Either String [AbsClas EmptyBody T.TExpr])
+typeInterfaces inters = 
+  let 
+    go :: ClasInterface -> IO (AbsClas EmptyBody T.TExpr)
+    go i = do print (className i)
+              case runTyping inters i (interface i) of
+                Left s -> error s
+                Right i' -> return i'
+  in do inters' <- mapM go inters
+        return (Right inters')
      
 
 interface :: AbsClas EmptyBody Expr 
@@ -199,8 +127,8 @@ rescue (Just ss) = Just <$> mapM stmt ss
 
 routineWithBody :: RoutineBody Expr -> TypingBody body (RoutineBody T.TExpr)
 routineWithBody body = do
-  stmt <- routineStmt body
-  return (body {routineBody = stmt})
+  statement <- routineStmt body
+  return (body {routineBody = statement})
 
 stmt :: Stmt -> TypingBody body TStmt
 stmt s = setPosition (position s) (uStmt (contents s))

@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Language.Eiffel.TypeCheck.BasicTypes where
+module Language.Eiffel.TypeCheck.BasicTypes 
+       (guardTypeIs, numericCanBe, conformThrow) where
 
 import Control.Applicative
 import Control.Monad
@@ -19,42 +20,28 @@ import Language.Eiffel.TypeCheck.Generic
 
 import Util.Monad
 
-isInt, isDouble, isBool :: Typ -> Bool
-isInt (ClassType name []) = True
-isInt _       = False
-
-isDouble (ClassType name []) = True
-isDouble _          = False
-
-isNum :: Typ -> Bool
-isNum t = isDouble t || isInt t
-
-isBool = (== boolType)
+numericCanBe (T.LitInt 0) t =
+  isIntegerType t || isNaturalType t || isRealType t
+numericCanBe (T.LitInt i) t
+  | isIntegerType t || isNaturalType t =
+    let (lower, upper) = typeBounds t
+    in lower <= fromIntegral i && fromIntegral i <= upper
+  | otherwise = False
+numericCanBe e t 
+  | T.texprTyp e == (ClassType "INTEGER_32" []) &&
+    (t == (ClassType "REAL_64" []) || t == (ClassType "REAL_32" [])) = True
+  | T.texprTyp e == (ClassType "INTEGER_32" []) &&
+    t == (ClassType "INTEGER_64" []) = True
+  | otherwise = False
 
 guardTypePred :: (Typ -> Bool) -> String -> Typ -> TypingBody body Typ
 guardTypePred p s t = guardThrow (p t) s >> return t
 
 guardTypeIs typ expr = 
-  guardTypePred (== typ)
-                ("require " ++ show typ)
-                (T.texpr expr)
-
--- inClass :: ClassFeature a body Expr => String -> Typ -> TypingBody body a
-inClass = inClass' resolveIFace
-
--- inGenClass  :: ClassFeature a body Expr => 
---                String -> Typ -> TypingBody body a
-inGenClass   = inClass' lookupClass
-
-inClass' :: -- ClassFeature a body expr =>
-            (Typ -> TypingBody body (AbsClas body expr))
-            -> String
-            -> Typ
-            -> TypingBody body FeatureEx
-inClass' lookupC fName t = do
-  ci   <- lookupC t
-  maybeThrow (findFeature ci fName) $ "No Feature Found: " ++ fName ++ " in " ++ show t ++ " with " ++ show (map (featureName :: FeatureEx -> String) (allFeatures ci))
-
+  let exprType = T.texpr expr
+  in guardTypePred (== typ) 
+                   ("require " ++ show typ ++ " actual " ++ show exprType)
+                   (T.texpr expr)
 
 conformThrow :: TExpr -> Typ -> TypingBody body TExpr
 conformThrow expr t = do
@@ -70,16 +57,24 @@ conformThrow expr t = do
 
 convertsTo :: Typ -> Typ -> TypingBody ctxBody (Maybe (TExpr -> TExpr))
 convertsTo fromType toType = do
-  cls <- lookupClass fromType
+  fromCls <- lookupClass fromType
+  toCls <- lookupClass toType
   p <- currentPos
-  let convTo (ConvertTo name types) = toType `elem` types 
+  let convTo (ConvertTo _ types) = toType `elem` types 
       convTo _ = False 
-      converters = find convTo (S.converts cls)
-  case converters of
+      convertersTo = find convTo (S.converts fromCls)
+      
+      convFrom (ConvertFrom _ types) = fromType `elem` types
+      convFrom _ = False
+      convertersFrom = find convFrom (S.converts toCls)
+      
+  case convertersTo <|> convertersFrom of
     Nothing -> return Nothing
     Just (ConvertTo name _) -> 
       return $ Just $ \t -> attachPos p $ T.Call t name [] toType
-        
+    Just (ConvertFrom name _) -> 
+      return $ Just $ \t -> attachPos p $ T.CreateExpr fromType name [t]
+
 
 conforms :: Typ -> Typ -> TypingBody body (Maybe (TExpr -> TExpr))
 conforms VoidType t
@@ -87,6 +82,8 @@ conforms VoidType t
     | otherwise = return (Just (inheritPos (T.Cast t)))
 conforms (Sep _ _ t1) (Sep _ _ t2) = 
     conforms (ClassType t1 []) (ClassType t2 [])
+conforms (TupleType typesDecls1) tup@(TupleType typeDecls2)
+    | either null null typesDecls1 = return (Just $ inheritPos (T.Cast tup))
 conforms _t VoidType = return Nothing
 conforms _ t | t == anyType = return $ Just $ inheritPos (T.Cast anyType)
 conforms t1 t2

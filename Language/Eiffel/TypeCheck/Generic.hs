@@ -1,9 +1,7 @@
-module Language.Eiffel.TypeCheck.Generic where
+module Language.Eiffel.TypeCheck.Generic 
+       (resolveIFace, unlike, unlikeType, updateGeneric, updateGenerics) where
 
 import Control.Applicative
-import Control.Monad
-
-import Data.Maybe
 
 import Language.Eiffel.TypeCheck.Context
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
@@ -14,44 +12,22 @@ import Language.Eiffel.Position
 
 import Util.Monad
 
--- for checking declarations `a : ARRAY [INTEGER]'
-checkTypeInst :: Typ -> TypingBody body ()
-checkTypeInst t@(ClassType _ ts) = do
-  clsGens  <- generics `fmap` lookupClass t
-  satGensThrow clsGens ts
-checkTypeInst _ = return ()
-
-satGensThrow :: [Generic] -> [Typ] -> TypingBody body ()
-satGensThrow gs ts = do
-  guardThrow (length gs == length ts) "resolveGeneric: diff length"             
-  zipWithM_ satGenThrow gs ts
-  
-satGenThrow :: Generic -> Typ -> TypingBody body ()
-satGenThrow g t = do
-  sat <- satisfiesGeneric g t
-  guardThrow sat "satGenThrow: unsatisfied"
-
-satisfiesGeneric :: Generic -> Typ -> TypingBody body Bool
-satisfiesGeneric _g _t = return True
-
--- during lookup of the class as in `a.f'
-
 resolveIFace :: Typ -> TypingBody body (AbsClas body Expr)
 resolveIFace t@(ClassType _ ts) = updateGenerics ts `fmap` lookupClass t
-resolveIFace (Like ident) = do
+resolveIFace (Like _) = do
   T.CurrentVar t <- contents <$> currentM
-  res <- unlikeType t (Like ident)
-  resolveIFace res
+  resolveIFace t
 resolveIFace (Sep _ _ t)  = resolveIFace (ClassType t [])
 resolveIFace t = error $ "resolveIFace: called on " ++ show t
 
-type GenUpd a = ClassName -> Typ -> a -> a
+type GenUpd a = Typ -> Typ -> a -> a
 
 updateGenerics :: [Typ] -> AbsClas body Expr -> AbsClas body Expr
 updateGenerics ts ci =
-    let gs = map genericName (generics ci)
+    let gs = map (\ gen -> ClassType (genericName gen) []) (generics ci)
         f  = foldl (.) id (zipWith updateGeneric gs ts)
-    in f ci
+        newClass = f ci
+    in newClass -- { generics = [] }
 
 updateGeneric :: GenUpd (AbsClas body Expr) 
 updateGeneric g t = 
@@ -71,44 +47,30 @@ updateDecl :: GenUpd Decl
 updateDecl g t (Decl n t') = Decl n (updateTyp g t t')
 
 updateTyp :: GenUpd Typ
-updateTyp g t t'@(ClassType c' _)
-    | g == c'   = t --ClassType  (map (updateTyp g t) gs)
-    | otherwise = t'
-updateTyp _ _ t' = t'
+updateTyp g t t'@(ClassType name types)
+  | g == t' = t
+  | otherwise = ClassType name (map (updateTyp g t) types)
+updateTyp g t t'@(TupleType typesOrDecls)
+  | g == t' = t
+  | otherwise = case typesOrDecls of
+    Left types -> TupleType (Left $ map (updateTyp g t) types)
+    Right decls -> TupleType (Right $ map (updateDecl g t) decls)
+updateTyp g t t' 
+  | g == t' = t
+  | otherwise =  t'
 
+unlike curr clas (Decl n (Like ident)) = 
+  Decl n <$> unlikeType curr clas (Like ident)
+unlike _ _ d =  return d
 
-
-
-findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)
-findInParents typ name = do
-  cls <- lookupClass typ
-  case findFeatureEx cls name of
-    Just r -> return (Just r)
-    Nothing -> do
-      let notUndefined ih = 
-            name `notElem` concatMap undefine (inheritClauses ih)
-          validParents = filter notUndefined (inherit cls)
-          parentTypes = 
-            concatMap (map inheritClass . inheritClauses) validParents
-      res <- mapM (`findInParents` name) parentTypes
-      return (msum res)
-  
-
-unlike :: Typ -> Decl -> TypingBody ctxBody Decl
-unlike current (Decl n (Like ident)) = 
-  Decl n <$> unlikeType current (Like ident)
-unlike _ d =  return d
-
-unlikeType current (Like "Current") = return current
-unlikeType current (Like ident) = do
+unlikeType curr _ (Like "Current") = return curr
+unlikeType curr clas (Like ident) = do
   typeMb <- typeOfVar ident
-  case typeMb of
-    Just t -> return t
-    Nothing -> do 
-      featMb <- findInParents current ident
-      cls <- lookupClass current
-      let feat = fromMaybe (error $ "unlikeType: " ++ ident ++ 
-                                    " in " ++ show current)
-                           featMb
-      unlikeType current (featureResult feat)
-unlikeType _ t = return t
+  p <- currentPos
+  case (featureResult <$> findFeatureEx clas ident) <|> typeMb of
+    Nothing -> error $ "unlikeType: can't find " ++ ident ++ 
+                       " in " ++ show curr ++ "," ++ show p
+    Just resT -> unlikeType curr clas resT
+unlikeType curr clas (ClassType name gs) = 
+  ClassType name <$> mapM (unlikeType curr clas) gs
+unlikeType _ _ t = return t
