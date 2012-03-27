@@ -4,10 +4,6 @@ module Language.Eiffel.TypeCheck.Class
 import Control.Applicative
 import Control.Monad.Reader
 
-import Data.Maybe
-
-import Debug.Trace
-
 import Language.Eiffel.Syntax
 import Language.Eiffel.Position
 import Language.Eiffel.Util
@@ -15,51 +11,7 @@ import Language.Eiffel.Util
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 import Language.Eiffel.TypeCheck.TypedExpr (TStmt, TClass)
 import Language.Eiffel.TypeCheck.Context
-import Language.Eiffel.TypeCheck.Generic
 import Language.Eiffel.TypeCheck.Expr
-
-import Util.Monad
-
-traceShow' x = traceShow x x
-
--- unlikeInterfaceM inters clas = runTyping inters clas (unlikeInterface clas)
-
--- unlikeDecls clsType decls = 
---   local (addDecls noLikes) (mapM (unlike clsType) decls)
---     where isLike (Like _) = True
---           isLike _        = False
---           (likes, noLikes) = span (isLike . declType) decls
-
--- findInParents :: Typ -> String -> TypingBody ctxBody (Maybe FeatureEx)
--- findInParents typ name = do
---   cls <- lookupClass typ
---   case findFeatureEx cls name of
---     Just r -> return (Just r)
---     Nothing -> do
---       let notUndefined ih = 
---             name `notElem` concatMap undefine (inheritClauses ih)
---           validParents = filter notUndefined (inherit cls)
---           parentTypes = 
---             concatMap (map inheritClass . inheritClauses) validParents
---       res <- mapM (`findInParents` name) parentTypes
---       return (msum res)
-  
-
--- unlike :: Typ -> Decl -> TypingBody ctxBody Decl
--- unlike current (Decl n (Like "Current")) = return (Decl n current)
--- unlike current (Decl n (Like ident)) = do
---   typeMb <- typeOfVar ident
---   case typeMb of
---     Just t -> return (Decl n t)
---     Nothing -> do 
---       featMb <- findInParents current ident
---       cls <- lookupClass current
---       let feat = fromMaybe (error $ "unlike: " ++ n ++ ": like " ++ ident ++ 
---                                     " in " ++ show current)
---                            featMb
---       Decl _ resTyp <- unlike current (Decl "__unlike" $ featureResult feat)
---       return (Decl n resTyp)
--- unlike _ d =  return d
 
 routineStmt :: RoutineBody Expr -> TypingBody body TStmt
 routineStmt = stmt . routineBody
@@ -70,8 +22,8 @@ routineEnv :: AbsRoutine body Expr
               -> TypingBody ctxBody a
 routineEnv f m = do
   curr <- current <$> ask
-  clas <- flatten curr
-  dcls <- unlikeDecls curr clas (routineArgs f)
+  cls <- flatten curr
+  dcls <- unlikeDecls curr cls (routineArgs f)
   local (addDecls dcls . setResult f) m
  
 runTyping :: [AbsClas ctxBody Expr]
@@ -102,7 +54,7 @@ typeInterfaces inters =
     go i = do print (className i)
               case runTyping inters i (interface i) of
                 Left s -> error s
-                Right i -> return i
+                Right i' -> return i'
   in do inters' <- mapM go inters
         return (Right inters')
      
@@ -175,8 +127,8 @@ rescue (Just ss) = Just <$> mapM stmt ss
 
 routineWithBody :: RoutineBody Expr -> TypingBody body (RoutineBody T.TExpr)
 routineWithBody body = do
-  stmt <- routineStmt body
-  return (body {routineBody = stmt})
+  statement <- routineStmt body
+  return (body {routineBody = statement})
 
 stmt :: Stmt -> TypingBody body TStmt
 stmt s = setPosition (position s) (uStmt (contents s))

@@ -53,23 +53,14 @@ data UnPosTExpr
   | LitVoid Typ
   | LitDouble Double deriving (Show, Eq)
 
-
--- showTyp t = "{" ++ show t ++ "}"
-
--- instance Show UnPosTExpr where
---   show (Call trg name args t) = 
---     "(" ++ show trg ++ "." ++ name ++ " " ++ show args ++ showTyp t ++ ")"
---   show (Cast typ expr) = "(" ++ showTyp typ ++ " " ++ show expr ++ ")"
---   show (CurrentVar typ) = "(" ++ showTyp typ ++ " Current)"
-
 untype :: TClass -> Clas
 untype = classMapExprs untypeFeat untypeClause untypeConstant
 
 untypeClause :: Clause TExpr -> Clause Expr
 untypeClause (Clause label e) = Clause label (untypeExpr e)
 
-untypeContract (Contract inherit clauses) = 
-  Contract inherit (map untypeClause clauses)
+untypeContract (Contract inhrt clauses) = 
+  Contract inhrt (map untypeClause clauses)
 
 untypeConstant (Constant froz decl expr) = 
   Constant froz decl (untypeExpr expr)
@@ -94,10 +85,10 @@ untypeStmt' (CallStmt e) = CallStmt (untypeExpr e)
 untypeStmt' (Block ss)   = Block (map untypeStmt ss)
 untypeStmt' BuiltIn      = BuiltIn
 untypeStmt' (Check cs)   = Check (map untypeClause cs)
-untypeStmt' (Loop from inv until body var) =
+untypeStmt' (Loop from inv untl body var) =
   Loop (untypeStmt from)
        (map untypeClause inv)
-       (untypeExpr until)
+       (untypeExpr untl)
        (untypeStmt body)
        (untypeExpr <$> var)
 untypeStmt' (If e body elseIfs elsePart) = 
@@ -124,7 +115,7 @@ untypeExpr' (Var s _t)
 untypeExpr' (CurrentVar _t)
     = E.CurrentVar
 untypeExpr' (Old e) = E.UnOpExpr E.Old (untypeExpr e)
-untypeExpr' (Cast t e) 
+untypeExpr' (Cast _ e) 
     = contents $ untypeExpr e
 untypeExpr' (ResultVar _t)
     = E.ResultVar

@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Language.Eiffel.TypeCheck.BasicTypes where
+module Language.Eiffel.TypeCheck.BasicTypes 
+       (guardTypeIs, numericCanBe, conformThrow) where
 
 import Control.Applicative
 import Control.Monad
@@ -19,18 +20,6 @@ import Language.Eiffel.TypeCheck.Generic
 
 import Util.Monad
 
-isInt, isDouble, isBool :: Typ -> Bool
-isInt (ClassType name []) = True
-isInt _       = False
-
-isDouble (ClassType name []) = True
-isDouble _          = False
-
-isNum :: Typ -> Bool
-isNum t = isDouble t || isInt t
-
-isBool = (== boolType)
-
 numericCanBe (T.LitInt 0) t =
   isIntegerType t || isNaturalType t || isRealType t
 numericCanBe (T.LitInt i) t
@@ -38,10 +27,10 @@ numericCanBe (T.LitInt i) t
     let (lower, upper) = typeBounds t
     in lower <= fromIntegral i && fromIntegral i <= upper
   | otherwise = False
-numericCanBe exp t 
-  | T.texprTyp exp == (ClassType "INTEGER_32" []) &&
+numericCanBe e t 
+  | T.texprTyp e == (ClassType "INTEGER_32" []) &&
     (t == (ClassType "REAL_64" []) || t == (ClassType "REAL_32" [])) = True
-  | T.texprTyp exp == (ClassType "INTEGER_32" []) &&
+  | T.texprTyp e == (ClassType "INTEGER_32" []) &&
     t == (ClassType "INTEGER_64" []) = True
   | otherwise = False
 
@@ -53,23 +42,6 @@ guardTypeIs typ expr =
   in guardTypePred (== typ) 
                    ("require " ++ show typ ++ " actual " ++ show exprType)
                    (T.texpr expr)
-
--- inClass :: ClassFeature a body Expr => String -> Typ -> TypingBody body a
-inClass = inClass' resolveIFace
-
--- inGenClass  :: ClassFeature a body Expr => 
---                String -> Typ -> TypingBody body a
-inGenClass   = inClass' lookupClass
-
-inClass' :: -- ClassFeature a body expr =>
-            (Typ -> TypingBody body (AbsClas body expr))
-            -> String
-            -> Typ
-            -> TypingBody body FeatureEx
-inClass' lookupC fName t = do
-  ci   <- lookupC t
-  maybeThrow (findFeature ci fName) $ "No Feature Found: " ++ fName ++ " in " ++ show t ++ " with " ++ show (map (featureName :: FeatureEx -> String) (allFeatures ci))
-
 
 conformThrow :: TExpr -> Typ -> TypingBody body TExpr
 conformThrow expr t = do
@@ -88,11 +60,11 @@ convertsTo fromType toType = do
   fromCls <- lookupClass fromType
   toCls <- lookupClass toType
   p <- currentPos
-  let convTo (ConvertTo name types) = toType `elem` types 
+  let convTo (ConvertTo _ types) = toType `elem` types 
       convTo _ = False 
       convertersTo = find convTo (S.converts fromCls)
       
-      convFrom (ConvertFrom name types) = fromType `elem` types
+      convFrom (ConvertFrom _ types) = fromType `elem` types
       convFrom _ = False
       convertersFrom = find convFrom (S.converts toCls)
       
