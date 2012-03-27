@@ -98,3 +98,4 @@ unlikeType current clas (Like ident) = do
     Just resT -> unlikeType current clas resT
 unlikeType current clas (ClassType name gs) = 
   ClassType name <$> mapM (unlikeType current clas) gs
+unlikeType _ _ t = return t

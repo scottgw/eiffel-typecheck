@@ -82,8 +82,7 @@ currentM = do
 mkCtx :: Typ -> [AbsClas body Expr] -> TypeContext body
 mkCtx currTyp cs = 
     TypeContext 
-    {
-      interfaces = clasMap cs
+    { interfaces = clasMap cs
     , current = currTyp 
     , result = error "mkCtx: no Result"
     , variables = Map.empty -- attrMap c

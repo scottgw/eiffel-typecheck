@@ -43,8 +43,6 @@ numericCanBe exp t
     (t == (ClassType "REAL_64" []) || t == (ClassType "REAL_32" [])) = True
   | T.texprTyp exp == (ClassType "INTEGER_32" []) &&
     t == (ClassType "INTEGER_64" []) = True
-  | T.texprTyp exp == (ClassType "IMMUTABLE_STRING_8" []) &&
-    t == (ClassType "STRING_8" []) = True
   | otherwise = False
 
 guardTypePred :: (Typ -> Bool) -> String -> Typ -> TypingBody body Typ
@@ -87,16 +85,24 @@ conformThrow expr t = do
 
 convertsTo :: Typ -> Typ -> TypingBody ctxBody (Maybe (TExpr -> TExpr))
 convertsTo fromType toType = do
-  cls <- lookupClass fromType
+  fromCls <- lookupClass fromType
+  toCls <- lookupClass toType
   p <- currentPos
   let convTo (ConvertTo name types) = toType `elem` types 
       convTo _ = False 
-      converters = find convTo (S.converts cls)
-  case converters of
+      convertersTo = find convTo (S.converts fromCls)
+      
+      convFrom (ConvertFrom name types) = fromType `elem` types
+      convFrom _ = False
+      convertersFrom = find convFrom (S.converts toCls)
+      
+  case convertersTo <|> convertersFrom of
     Nothing -> return Nothing
     Just (ConvertTo name _) -> 
       return $ Just $ \t -> attachPos p $ T.Call t name [] toType
-        
+    Just (ConvertFrom name _) -> 
+      return $ Just $ \t -> attachPos p $ T.CreateExpr fromType name [t]
+
 
 conforms :: Typ -> Typ -> TypingBody body (Maybe (TExpr -> TExpr))
 conforms VoidType t
