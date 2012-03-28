@@ -4,6 +4,8 @@ module Language.Eiffel.TypeCheck.Class
 import Control.Applicative
 import Control.Monad.Reader
 
+import qualified Data.Map as Map
+
 import Language.Eiffel.Syntax
 import Language.Eiffel.Position
 import Language.Eiffel.Util
@@ -40,7 +42,11 @@ clasM cs c = runTyping cs c (clas c routineWithBody)
 clas :: AbsClas t Expr 
         -> (t -> TypingBody ctxBody body) 
         -> TypingBody ctxBody (AbsClas body T.TExpr)
-clas c rtnBodyCheck = do
+clas c rtnBodyCheck = 
+  let gens = genericStubs c
+      updateGen ctx = 
+        ctx { interfaces = Map.union (interfaces ctx) (clasMap gens)}
+  in local updateGen $ do
     fcs  <- mapM (featClause rtnBodyCheck) (featureClauses c)
     invs <- mapM clause (invnts c)
     return $ c {featureClauses = fcs, invnts = invs}
