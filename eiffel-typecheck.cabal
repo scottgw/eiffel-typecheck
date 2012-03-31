@@ -48,7 +48,7 @@ Library
   Exposed-modules:     Language.Eiffel.TypeCheck.Expr, Language.Eiffel.TypeCheck.Context, Language.Eiffel.TypeCheck.Generic, Language.Eiffel.TypeCheck.TypedExpr, Language.Eiffel.TypeCheck.Class, Language.Eiffel.TypeCheck.BasicTypes
   
   -- Packages needed in order to build this package.
-  Build-depends:       language-eiffel, base, mtl, containers
+  Build-depends:       language-eiffel, base, mtl, containers, binary, derive
   
   -- Modules not exported by this package.
   Other-modules:       Util.Monad

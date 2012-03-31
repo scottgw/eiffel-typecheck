@@ -22,19 +22,19 @@ resolveIFace t = error $ "resolveIFace: called on " ++ show t
 
 type GenUpd a = Typ -> Typ -> a -> a
 
-updateGenerics :: [Typ] -> AbsClas body Expr -> AbsClas body Expr
+updateGenerics :: [Typ] -> AbsClas body expr -> AbsClas body expr
 updateGenerics ts ci =
     let gs = map (\ gen -> ClassType (genericName gen) []) (generics ci)
         f  = foldl (.) id (zipWith updateGeneric gs ts)
         newClass = f ci
     in newClass -- { generics = [] }
 
-updateGeneric :: GenUpd (AbsClas body Expr) 
+updateGeneric :: GenUpd (AbsClas body expr) 
 updateGeneric g t = 
   classMapAttributes (updateAttribute g t) . 
   classMapRoutines (updateFeatDecl g t)
 
-updateFeatDecl :: GenUpd (AbsRoutine body Expr)
+updateFeatDecl :: GenUpd (AbsRoutine body expr)
 updateFeatDecl g t fd = 
     fd 
     { routineArgs = map (updateDecl g t) (routineArgs fd)
@@ -63,6 +63,7 @@ unlike curr clas (Decl n (Like ident)) =
   Decl n <$> unlikeType curr clas (Like ident)
 unlike _ _ d =  return d
 
+unlikeType :: Typ -> AbsClas body expr -> Typ -> TypingBodyExpr body expr Typ
 unlikeType curr _ (Like "Current") = return curr
 unlikeType curr clas (Like ident) = do
   typeMb <- typeOfVar ident

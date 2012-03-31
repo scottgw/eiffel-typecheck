@@ -1,8 +1,14 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Language.Eiffel.TypeCheck.TypedExpr where
 
 import Control.Applicative
 
-import qualified Language.Eiffel.Syntax as E (UnPosExpr (..), ROp (..), UnOp (..))
+import Data.DeriveTH
+import Data.Binary
+
+import qualified Language.Eiffel.Syntax as E 
+  (UnPosExpr (..), ROp (..), UnOp (..))
 import Language.Eiffel.Syntax hiding (UnPosExpr (..), ROp (..), UnOp (..))
 import Language.Eiffel.Position
 import Language.Eiffel.Util
@@ -21,6 +27,7 @@ eqOp (RelOp E.Eq _) = Eq
 eqOp (RelOp E.Neq _) = Neq
 eqOp (RelOp E.TildeEq _) = TildeEq
 eqOp (RelOp E.TildeNeq _) = TildeNeq
+eqOp r = error $ "eqOp: " ++ show r
 
 binEqOp Eq = RelOp E.Eq NoType
 binEqOp Neq = RelOp E.Neq NoType
@@ -52,6 +59,9 @@ data UnPosTExpr
   | LitBool Bool
   | LitVoid Typ
   | LitDouble Double deriving (Show, Eq)
+
+$( derive makeBinary ''EqOp )
+$( derive makeBinary ''UnPosTExpr )
 
 untype :: TClass -> Clas
 untype = classMapExprs untypeFeat untypeClause untypeConstant

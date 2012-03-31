@@ -28,9 +28,9 @@ routineEnv f m = do
   dcls <- unlikeDecls curr cls (routineArgs f)
   local (addDecls dcls . setResult f) m
  
-runTyping :: [AbsClas ctxBody Expr]
+runTyping :: [AbsClas ctxBody expr']
              -> AbsClas body expr
-             -> TypingBody ctxBody a
+             -> TypingBodyExpr ctxBody expr' a
              -> Either String a
 runTyping cs curr m = idErrorRead m (mkCtx (cType curr) cs)
 

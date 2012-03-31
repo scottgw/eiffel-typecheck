@@ -5,28 +5,34 @@ module Util.Monad where
 import Control.Applicative
 import Control.Monad.Reader
 
-import Data.Map
+import qualified  Data.Map as Map
+import Data.Map (Map)
 
 import Language.Eiffel.Syntax
 import Language.Eiffel.Util
 
-class HasClasEnv r body | r -> body where
-    classEnv :: r -> Map String (AbsClas body Expr)
-    update   :: r -> (AbsClas body Expr) -> r
+class HasClasEnv r body expr | r -> body, r -> expr where
+    classEnv :: r -> Map String (AbsClas body expr)
+    update   :: r -> (AbsClas body expr) -> r
 
-class (HasClasEnv r body, MonadReader r m) => 
-      ClassReader r m body | m -> r where
+class (HasClasEnv r body expr, MonadReader r m) => 
+      ClassReader r m body expr | m -> r where
 
-askClassEnv :: ClassReader r m body => m (Map String (AbsClas body Expr))
+askClassEnv :: ClassReader r m body expr => 
+               m (Map String (AbsClas body expr))
 askClassEnv = classEnv `liftM` ask
 
-lookupClassM :: ClassReader r m body => 
-                Typ -> m (Maybe (AbsClas body Expr))
-lookupClassM (ClassType cn _) = Data.Map.lookup cn `liftM` askClassEnv
+lookupClassM :: ClassReader r m body expr => 
+                Typ -> m (Maybe (AbsClas body expr))
+lookupClassM (ClassType cn _) = Map.lookup cn `liftM` askClassEnv
 lookupClassM (Sep _ _ cn)     = lookupClassM (ClassType cn [])
+lookupClassM (TupleType ls)    = lookupClassM (ClassType "TUPLE" ts)
+  where getTypes (Left xs) = xs
+        getTypes (Right dcls) = map declType dcls
+        ts = getTypes ls
 lookupClassM t = error $ "lookupClassM: can't lookup a " ++ show t ++ " type"
 
-lookupClass :: ClassReader r m body => Typ -> m (AbsClas body Expr)
+lookupClass :: ClassReader r m body expr => Typ -> m (AbsClas body expr)
 lookupClass t = liftM (maybe (error $ "lookupClas: can't find " ++ show t) id) 
                 (lookupClassM t)
 
@@ -35,15 +41,15 @@ lookupFeatureM typ name = do
   clas <- lookupClassM typ
   return (findFeature <$> clas <*> pure name)
 
-lookupAttrM :: ClassReader r m body => Typ -> String 
-               -> m (Maybe (Attribute Expr))
+lookupAttrM :: ClassReader r m body expr => Typ -> String 
+               -> m (Maybe (Attribute expr))
 lookupAttrM t name = do
   c <- lookupClassM t
   return (do
            c' <- c
            findAttrInt c' name)
 
-lookupAttr :: ClassReader r m body => Typ -> String -> m (Attribute Expr)
+lookupAttr :: ClassReader r m body expr => Typ -> String -> m (Attribute expr)
 lookupAttr t name 
     = liftM (maybe 
              (error $ "lookupAttr: can't fine " ++ show t ++ "." ++ name)

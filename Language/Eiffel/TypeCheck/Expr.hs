@@ -147,7 +147,6 @@ expr (UnqualCall fName args) = do
   expr qual
   
 expr (QualCall trg name args) = do 
-  -- typecheck and cast the target if from a generic class
   trg' <- typeOfExpr trg
   args' <- mapM typeOfExpr args
 
@@ -156,10 +155,10 @@ expr (QualCall trg name args) = do
   
   case findFeatureEx flatCls name of
     Nothing -> throwError $ "expr.QualCall: " ++ show trg' ++ ": " ++ name ++ show args' ++ show (map featureName $ allRoutines flatCls)
-    Just feat ->
+    Just feat -> do
       let formArgs = map declType (featureArgs feat)
           res = featureResult feat
-      in catchError 
+      catchError 
          (do argsConform args' formArgs
              tagPos (T.Call trg' name args' res)
          )
@@ -247,8 +246,14 @@ unlikeDecls clsType clas decls =
 
 
 -- unlikeClass = unlikeAbsClass unlikeBody
+unlikeInterface :: AbsClas body expr -> 
+                   TypingBodyExpr body expr (AbsClas body expr)
 unlikeInterface = unlikeAbsClass (\ _ _ x -> return x)
 
+unlikeAbsClass :: 
+  (Typ -> AbsClas body expr -> body -> TypingBodyExpr body expr body) -> 
+  AbsClas body expr -> 
+  TypingBodyExpr body expr (AbsClas body expr)
 unlikeAbsClass unlikeImpl clas =
   classMapAttributesM unlikeAttr clas >>= classMapRoutinesM unlikeRoutine
   where
@@ -276,6 +281,25 @@ clasToType cls =
   in ClassType (className cls) (map genType $ generics cls)
 
 
+-- | Find the class which a particular feature is written in
+-- starting at the argument type. The typ where the feature is 
+-- most recently written (ie, closest to the given type in the hierarchy)
+-- is returned if it exists.
+findWritten :: Typ -> String -> TypingBody ctxBody (Maybe Typ)
+findWritten typ name = 
+  let go inhrt = do
+        let inhtTyp = inheritClass inhrt
+        cls <- renameAll (rename inhrt) <$>  lookupClass inhtTyp
+        let featMb = const inhtTyp <$> findFeatureEx cls name
+            inhts = allInherited cls
+        xs <- mapM go inhts
+        return (listToMaybe $ catMaybes (featMb : xs))
+  in do anyCls <- lookupClass anyType
+        case findFeatureEx anyCls name of
+          Nothing -> go (InheritClause typ [] [] [] [] [])
+          Just _ -> return (Just anyType)
+  
+
 -- | Goes up the list of parents to find where a feature comes
 -- from, and may produce a function that will take an expression of the 
 -- target type to the parent that contains the desired feature.
@@ -283,13 +307,14 @@ clasToType cls =
 -- This is used to both determine if a feature is available in a class,
 -- and if so to return the cast to the parent class that contains it. The
 -- cast is useful for code generation.
-flatten :: 
+flatten :: forall body expr . 
   Typ -> -- ^ Type to flatten
-  TypingBody ctxBody (AbsClas ctxBody Expr) -- ^ Flattened class
-flatten typ  = 
+  TypingBodyExpr body expr (AbsClas body expr) -- ^ Flattened class
+flatten typ = 
   let
     inheritType t = InheritClause t [] [] [] [] []
     
+    go :: InheritClause -> TypingBodyExpr body expr (AbsClas body expr)
     go parentClause = do
       clas <- rewriteWithInherit parentClause
       let ihts = allInherited clas
@@ -319,9 +344,11 @@ flatten typ  =
 -- |Rewrites a inherited class. This performs renaming and generic
 -- instantiation, including "like Current" transformation.
 rewriteWithInherit :: InheritClause ->
-                      TypingBody ctxBody (AbsClas ctxBody Expr)
+                      TypingBodyExpr ctxBody expr (AbsClas ctxBody expr)
 rewriteWithInherit inhrt = 
-  let updateWithGens gens =
+  let
+    updateWithGens :: [Typ] -> AbsClas ctxBody expr -> AbsClas ctxBody expr
+    updateWithGens gens =
         updateGenerics gens . 
         undefineAll inhrt .
         renameAll (rename inhrt)
