@@ -55,7 +55,7 @@ data UnPosTExpr
   | LitArray [TExpr]
   | LitChar Char
   | LitString String
-  | LitInt Int
+  | LitInt Integer
   | LitBool Bool
   | LitVoid Typ
   | LitDouble Double deriving (Show, Eq)
