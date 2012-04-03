@@ -257,7 +257,7 @@ unlikeAbsClass ::
 unlikeAbsClass unlikeImpl clas =
   classMapAttributesM unlikeAttr clas >>= classMapRoutinesM unlikeRoutine
   where
-    clsType = clasToType clas
+    clsType = classToType clas
     unlike' = unlike clsType clas
     unlikeAttr a = do
       dcls <- unlike' (attrDecl a)
@@ -275,11 +275,6 @@ unlikeAbsClass unlikeImpl clas =
 unlikeBody typ clas (RoutineBody locals procs body) = 
   RoutineBody <$> mapM (unlike typ clas) locals <*> pure procs <*> pure body
 unlikeBody _ _ b = return b
-                      
-clasToType cls = 
-  let genType = flip ClassType [] . genericName
-  in ClassType (className cls) (map genType $ generics cls)
-
 
 -- | Find the class which a particular feature is written in
 -- starting at the argument type. The typ where the feature is 
