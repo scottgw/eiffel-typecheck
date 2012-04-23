@@ -108,7 +108,7 @@ untypeStmt' (If e body elseIfs elsePart) =
         (map untypeElseIf elseIfs) (fmap untypeStmt elsePart)
 untypeStmt' (Create typeMb targ name es) = 
   Create typeMb (untypeExpr targ) name (map untypeExpr es)
-untypeStmt' s = error (show s)
+untypeStmt' s = error $ "untypeStmt': " ++ show s
 
 
 
@@ -142,7 +142,8 @@ untypeExpr' (LitInt i) = E.LitInt i
 untypeExpr' (LitBool b) =  E.LitBool b
 untypeExpr' (LitVoid _) = E.LitVoid
 untypeExpr' (LitDouble d) = E.LitDouble d
-untypeExpr' s = error $ show s      
+untypeExpr' (Tuple es) = E.Tuple (map untypeExpr es)
+untypeExpr' s = error $ "untypeExpr': " ++ show s      
 
 texpr :: TExpr -> Typ
 texpr = texprTyp . contents
