@@ -143,6 +143,10 @@ untypeExpr' (LitBool b) =  E.LitBool b
 untypeExpr' (LitVoid _) = E.LitVoid
 untypeExpr' (LitDouble d) = E.LitDouble d
 untypeExpr' (Tuple es) = E.Tuple (map untypeExpr es)
+untypeExpr' (Agent trg name args _) 
+  = E.Agent $ 
+    takePos trg $ 
+    E.QualCall (untypeExpr trg) name (map untypeExpr args)
 untypeExpr' s = error $ "untypeExpr': " ++ show s      
 
 texpr :: TExpr -> Typ
