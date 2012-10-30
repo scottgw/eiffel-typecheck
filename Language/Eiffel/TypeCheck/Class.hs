@@ -19,13 +19,16 @@ routineStmt :: RoutineBody Expr -> TypingBody body TStmt
 routineStmt = stmt . routineBody
 
 
+unlikeDecls' dcls = do
+  curr <- current <$> ask
+  cls <- flatten curr
+  unlikeDecls curr cls dcls
+
 routineEnv :: AbsRoutine body Expr
               -> TypingBody ctxBody a
               -> TypingBody ctxBody a
 routineEnv f m = do
-  curr <- current <$> ask
-  cls <- flatten curr
-  dcls <- unlikeDecls curr cls (routineArgs f)
+  dcls <- unlikeDecls' (routineArgs f)
   local (addDecls dcls . setResult f) m
  
 runTyping :: [AbsClas ctxBody expr']
@@ -132,8 +135,10 @@ rescue Nothing = return Nothing
 rescue (Just ss) = Just <$> mapM stmt ss
 
 routineWithBody :: RoutineBody Expr -> TypingBody body (RoutineBody T.TExpr)
+routineWithBody (RoutineExternal var varMb) = return $ RoutineExternal var varMb
 routineWithBody body = do
-  statement <- routineStmt body
+  dcls <- unlikeDecls' (routineLocal body)
+  statement <- local (addDecls dcls) (routineStmt body)
   return (body {routineBody = statement})
 
 stmt :: Stmt -> TypingBody body TStmt

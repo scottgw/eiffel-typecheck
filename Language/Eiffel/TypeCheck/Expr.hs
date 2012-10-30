@@ -35,8 +35,8 @@ convertVarCall name = do
   flatCls <- flatten curr
   case findFeatureEx flatCls name of
     Nothing -> 
-      do vTyp <- typeOfVar name
-         maybeTag (T.Var name <$> vTyp)
+      do vTyp <- typeOfVar' name
+         maybeTag $ Just $ T.Var name vTyp
     Just _ -> Just <$> expr (UnqualCall name [])
 
 maybeTag :: Maybe a -> TypingBody ctxBody (Maybe (Pos a))
@@ -137,7 +137,8 @@ expr (BinOpExpr op e1 e2)
             _ -> id
     flatCls <- flatten (T.texpr e1')
     case findOperator flatCls (opAlias op) 1 of
-      Nothing -> throwError $ "Operator " ++ show op ++ " not found"
+      Nothing -> throwError $ 
+        "expr.BinOp.Operator " ++ show op ++ " not found in " ++ show (T.texpr e1')
       Just feat -> extraLocals (expr $ QualCall e1 (featureName feat) [e2])
 
 expr (UnqualCall fName args) = do
