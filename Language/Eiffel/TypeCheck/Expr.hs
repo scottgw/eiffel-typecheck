@@ -37,7 +37,12 @@ convertVarCall name = do
     Nothing -> 
       do vTyp <- typeOfVar' name
          maybeTag $ Just $ T.Var name vTyp
-    Just _ -> Just <$> expr (UnqualCall name [])
+    Just _ -> -- it could still be an access
+      case findFeature flatCls name of
+        Nothing -> Just <$> expr (UnqualCall name [])
+        Just attr -> do
+          curr <- currentM
+          maybeTag (Just (T.Access curr name (declType $ attrDecl attr)))
 
 maybeTag :: Maybe a -> TypingBody ctxBody (Maybe (Pos a))
 maybeTag Nothing  = return Nothing
@@ -223,6 +228,13 @@ expr (Agent e) = do
 expr (ManifestCast t e) = do
   e' <- typeOfExpr e
   tagPos (T.Cast t e')
+expr (Lookup targ args) = do
+  targ' <- typeOfExpr targ
+  flatCls <- flatten (T.texpr targ')
+  case findOperator flatCls "[]" (length args) of
+    Nothing -> throwError $ 
+      "expr.BinOp.Lookup: [] not found in " ++ show (T.texpr targ')
+    Just feat -> expr $ QualCall targ (featureName feat) args
 
 expr t = throwError ("TypeCheck.Expr.expr: " ++ show t)
 
