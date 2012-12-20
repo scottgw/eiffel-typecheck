@@ -147,6 +147,8 @@ untypeExpr' (Agent trg name args _)
   = E.Agent $ 
     takePos trg $ 
     E.QualCall (untypeExpr trg) name (map untypeExpr args)
+untypeExpr' (CreateExpr t fname args) = 
+  E.CreateExpr t fname $ map untypeExpr args
 untypeExpr' s = error $ "untypeExpr': " ++ show s      
 
 texpr :: TExpr -> Typ

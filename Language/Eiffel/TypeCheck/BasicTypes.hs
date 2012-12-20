@@ -22,6 +22,7 @@ import Util.Monad
 
 numericCanBe (T.LitInt 0) t =
   isIntegerType t || isNaturalType t || isRealType t
+numericCanBe (T.LitDouble n) t = isRealType t
 numericCanBe (T.LitInt i) t
   | isIntegerType t || isNaturalType t =
     let (lower, upper) = typeBounds t
