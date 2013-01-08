@@ -29,6 +29,11 @@ clause :: Clause Expr -> TypingBody body (Clause TExpr)
 clause (Clause n e) =
   Clause n <$> typeOfExprIs boolType e
 
+findFeature' cls name = 
+  case findSomeFeature cls name of
+    Just (SomeAttr a) -> Just a
+    _ -> Nothing
+
 -- | Determine whether a given string (for a VarOrCall) is a call or
 -- a local variable of some sort.
 convertVarCall :: String -> TypingBody body (Maybe TExpr)
@@ -46,7 +51,7 @@ convertVarCall name = do
            Just vTyp -> maybeTag $ Just $ T.Var name vTyp
     Just _ ->  -- it could still be an access
       {-# SCC "convertVarCallJust" #-}
-      case findFeature flatCls name of
+      case findFeature' flatCls name of
         Nothing -> Just <$> expr (UnqualCall name [])
         Just attr -> do
           curr <- currentM
