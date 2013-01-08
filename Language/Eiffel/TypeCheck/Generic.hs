@@ -68,9 +68,11 @@ unlikeType curr _ (Like "Current") = return curr
 unlikeType curr clas (Like ident) = do
   typeMb <- typeOfVar ident
   p <- currentPos
-  case (featureResult <$> findFeatureEx clas ident) <|> typeMb of
+  -- resMb <- lookupFlatFeatEx clas ident
+  case (featureResult <$> findSomeFeature clas ident) <|> typeMb of
+--  case typeMb <|> (featureResult <$> resMb) of
     Nothing -> error $ "unlikeType: can't find " ++ ident ++ 
-                       " in " ++ show curr ++ "," ++ show p
+                       " in " ++ show curr -- ++ "," ++ show p
     Just resT -> unlikeType curr clas resT
 unlikeType curr clas (ClassType name gs) = 
   ClassType name <$> mapM (unlikeType curr clas) gs

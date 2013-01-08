@@ -1,8 +1,11 @@
 {-# LANGUAGE TypeSynonymInstances, MultiParamTypeClasses, FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Language.Eiffel.TypeCheck.Context where
 
+import Control.Applicative
+import Control.Lens
 import Control.Monad.Error
 import Control.Monad.Identity
 import Control.Monad.Reader
@@ -29,7 +32,12 @@ data TypeContext body expr = TypeContext {
       pos        :: SourcePos
     }
 
-type FlatMap body expr = Map Typ (AbsClas body expr)
+data FlatMap body expr = 
+  FlatMap { _flatPart :: Map Typ (AbsClas body expr)
+          , _featPart :: Map (Typ, String) (FeatureEx expr)
+          }
+
+makeLenses ''FlatMap
 
 type TypeError = ErrorT String Identity
 type FlatLookup body expr = StateT (FlatMap body expr) TypeError
@@ -48,7 +56,7 @@ instance ClassReader
            expr
 
 currentPos :: TypingBodyExpr body expr SourcePos
-currentPos = pos `fmap` ask
+currentPos = pos <$> ask
 
 tagPos :: a -> TypingBodyExpr body expr (Pos a)
 tagPos a = currentPos >>= return . flip attachPos a
@@ -59,14 +67,25 @@ setPosition p = local (\ c -> c {pos = p})
 idErrorRead :: TypingBodyExpr body expr a -> 
                TypeContext body expr -> Either String a
 idErrorRead ctx = 
-  runIdentity . runErrorT . fmap fst . flip runStateT Map.empty . runReaderT ctx
-
+  runIdentity . runErrorT . fmap fst . flip runStateT (FlatMap Map.empty Map.empty) . runReaderT ctx
 
 addFlat :: Typ -> AbsClas body expr -> TypingBodyExpr body expr ()
-addFlat t flat = lift (modify (Map.insert t flat))
+addFlat t flat = do
+  lift $ modify (over flatPart (Map.insert t flat))
+  -- lift $ modify (over featPart (Map.union flatFeatureMap))
+  -- where
+  --   allFeatExs = allFeatures flat
+  --   flatFeatureMap = Map.fromList [((classToType flat, featureName f), f) | f <- allFeatExs]
+
+lookupFlatFeatEx :: AbsClas body expr -> String -> TypingBodyExpr body expr (Maybe (FeatureEx expr))
+lookupFlatFeatEx cls name = do
+  resMb <- lift (gets (Map.lookup (classToType cls, name) . view featPart))
+  return (resMb <|> findFeatureEx cls name)
+  
+
 
 getFlat :: Typ -> TypingBodyExpr body expr (Maybe (AbsClas body expr))
-getFlat t = lift (gets (Map.lookup t))
+getFlat t = lift (gets (Map.lookup t . view flatPart))
 
 guardThrow :: Bool -> String -> TypingBody body ()
 guardThrow False = throwErrorPos
@@ -83,7 +102,7 @@ throwErrorPos e = do
 
 currentM :: TypingBody body TExpr
 currentM = do
-  t <- current `fmap` ask
+  t <- current <$> ask
   tagPos (T.CurrentVar t)
 
 mkCtx :: Typ -> [AbsClas body expr] -> TypeContext body expr
@@ -110,7 +129,7 @@ typeOfVar' str
          case mV of
            Just v -> return v
            Nothing -> 
-               throwErrorPos (concat ["Variable not found: ", str, ".", show m])
+               throwErrorPos (concat ["Variable not found: ", str, " ctx: ", show m])
 
 addDeclsToMap :: [Decl] -> Map String Typ -> Map String Typ
 addDeclsToMap = Map.union . declsToMap

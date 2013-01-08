@@ -2,9 +2,11 @@ module Language.Eiffel.TypeCheck.Class
        (clas, clasM, typeInterfaces, typedPre, runTyping) where
 
 import Control.Applicative
+import Control.Lens
 import Control.Monad.Reader
 
 import qualified Data.Map as Map
+import qualified Data.Traversable as Trav
 
 import Language.Eiffel.Syntax
 import Language.Eiffel.Position
@@ -50,9 +52,9 @@ clas c rtnBodyCheck =
       updateGen ctx = 
         ctx { interfaces = Map.union (interfaces ctx) (clasMap gens)}
   in local updateGen $ do
-    fcs  <- mapM (featClause rtnBodyCheck) (featureClauses c)
+    featMap  <- mapMOf (traverse.exportFeat) (someFeature rtnBodyCheck) (featureMap c)
     invs <- mapM clause (invnts c)
-    return $ c {featureClauses = fcs, invnts = invs}
+    return $ c {featureMap = featMap, invnts = invs}
 
 
 typeInterfaces :: [ClasInterface] -> 
@@ -85,17 +87,14 @@ typedPre cis classInt name = idErrorRead go (mkCtx (cType classInt) cis)
                    (do r <- routine (const (return EmptyBody)) rout
                        return (routineReq r))
 
-featClause :: (body -> TypingBody ctxBody body')  
-              -> FeatureClause body Expr 
-              -> TypingBody ctxBody (FeatureClause body' T.TExpr)
-featClause  checkBody fClause = do
-  fs <- mapM (routine checkBody) (routines fClause)
-  cs <- mapM constt (constants fClause)
-  as <- mapM attr (attributes fClause)
-  return (fClause { routines = fs
-                  , constants = cs
-                  , attributes = as
-                  })
+someFeature :: (body -> TypingBody ctxBody body')  
+              -> SomeFeature body Expr 
+              -> TypingBody ctxBody (SomeFeature body' T.TExpr)
+someFeature checkBody = checkSome
+  where
+    checkSome (SomeRoutine r) = SomeRoutine <$> routine checkBody r
+    checkSome (SomeAttr a) = SomeAttr <$> attr a
+    checkSome (SomeConst c) = SomeConst <$> constt c
 
 attr :: Attribute Expr -> TypingBody body (Attribute T.TExpr)
 attr a = do

@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
@@ -10,6 +11,7 @@ import Control.Monad.Error
 import Control.Monad.Reader
 
 import Data.Maybe
+import qualified Data.Map as Map
 
 import Language.Eiffel.Syntax
 import Language.Eiffel.Position
@@ -32,12 +34,18 @@ clause (Clause n e) =
 convertVarCall :: String -> TypingBody body (Maybe TExpr)
 convertVarCall name = do
   curr <- current <$> ask
-  flatCls <- flatten curr
-  case findFeatureEx flatCls name of
-    Nothing -> 
-      do vTyp <- typeOfVar' name
-         maybeTag $ Just $ T.Var name vTyp
-    Just _ -> -- it could still be an access
+  !flatCls <- flatten curr
+--  resMb <- lookupFlatFeatEx flatCls name
+--  case ({-# SCC "convertVarCallFind" #-} resMb) of
+  case findSomeFeature flatCls name of
+    Nothing ->
+      {-# SCC "convertVarCallNothing" #-}
+      do vTypMb <- typeOfVar name
+         case vTypMb of
+           Nothing -> error $ "convertVarCall: " ++ show (Map.keys (featureMap flatCls))
+           Just vTyp -> maybeTag $ Just $ T.Var name vTyp
+    Just _ ->  -- it could still be an access
+      {-# SCC "convertVarCallJust" #-}
       case findFeature flatCls name of
         Nothing -> Just <$> expr (UnqualCall name [])
         Just attr -> do
@@ -307,7 +315,7 @@ findWritten typ name =
           Nothing -> go (InheritClause typ [] [] [] [] [])
           Just _ -> return (Just anyType)
   
-
+{-# NOINLINE flatten #-}
 -- | Goes up the list of parents to find where a feature comes
 -- from, and may produce a function that will take an expression of the 
 -- target type to the parent that contains the desired feature.
@@ -340,7 +348,7 @@ flatten typ =
                     unlikeType curr currFlat typ
     flatMb <- getFlat typ'
     case flatMb of
-      Nothing -> do
+      Nothing -> {-# SCC "flattenNothing" #-} do
         clas' <- go (inheritType typ')
         clasWithAny <- go (inheritType anyType)
         let clas'' = updateGeneric (Like "Current") typ' (mergeClass clas' clasWithAny)
