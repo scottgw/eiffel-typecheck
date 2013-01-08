@@ -29,7 +29,7 @@ clause :: Clause Expr -> TypingBody body (Clause TExpr)
 clause (Clause n e) =
   Clause n <$> typeOfExprIs boolType e
 
-findFeature' cls name = 
+findAttr' cls name = 
   case findSomeFeature cls name of
     Just (SomeAttr a) -> Just a
     _ -> Nothing
@@ -40,18 +40,16 @@ convertVarCall :: String -> TypingBody body (Maybe TExpr)
 convertVarCall name = do
   curr <- current <$> ask
   !flatCls <- flatten curr
---  resMb <- lookupFlatFeatEx flatCls name
---  case ({-# SCC "convertVarCallFind" #-} resMb) of
   case findSomeFeature flatCls name of
     Nothing ->
       {-# SCC "convertVarCallNothing" #-}
       do vTypMb <- typeOfVar name
          case vTypMb of
-           Nothing -> error $ "convertVarCall: " ++ show (Map.keys (featureMap flatCls))
+           Nothing -> error $ "convertVarCall: " -- ++ show (Map.keys (featureMap flatCls))
            Just vTyp -> maybeTag $ Just $ T.Var name vTyp
     Just _ ->  -- it could still be an access
       {-# SCC "convertVarCallJust" #-}
-      case findFeature' flatCls name of
+      case findAttr' flatCls name of
         Nothing -> Just <$> expr (UnqualCall name [])
         Just attr -> do
           curr <- currentM
@@ -280,15 +278,16 @@ unlikeAbsClass ::
   (Typ -> AbsClas body expr -> body -> TypingBodyExpr body expr body) -> 
   AbsClas body expr -> 
   TypingBodyExpr body expr (AbsClas body expr)
-unlikeAbsClass unlikeImpl clas =
-  classMapAttributesM unlikeAttr clas >>= classMapRoutinesM unlikeRoutine
+unlikeAbsClass unlikeImpl clas = do
+  clas' <- {-# SCC unlikeClassAttrMap #-} classMapAttributesM unlikeAttr clas
+  {-# SCC unlikeClassRoutineMap #-} classMapRoutinesM unlikeRoutine clas'
   where
     clsType = classToType clas
-    unlike' = unlike clsType clas
-    unlikeAttr a = do
+    unlike' = {-# SCC unlikeClassUnlike' #-} unlike clsType clas
+    unlikeAttr a = {-# SCC unlikeClassAttr #-} do
       dcls <- unlike' (attrDecl a)
       return (a { attrDecl = dcls})
-    unlikeRoutine r = do
+    unlikeRoutine r = {-# SCC unlikeClassRoutine #-} do
       args <- unlikeDecls clsType clas (routineArgs r)
       impl <- unlikeImpl clsType clas (routineImpl r)
       Decl _ res  <- local (addDecls args) 

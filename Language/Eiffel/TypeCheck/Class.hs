@@ -52,7 +52,7 @@ clas c rtnBodyCheck =
       updateGen ctx = 
         ctx { interfaces = Map.union (interfaces ctx) (clasMap gens)}
   in local updateGen $ do
-    featMap  <- mapMOf (traverse.exportFeat) (someFeature rtnBodyCheck) (featureMap c)
+    featMap  <- checkFeatureMap rtnBodyCheck (featureMap c)
     invs <- mapM clause (invnts c)
     return $ c {featureMap = featMap, invnts = invs}
 
@@ -86,6 +86,15 @@ typedPre cis classInt name = idErrorRead go (mkCtx (cType classInt) cis)
         go = routineEnv rout
                    (do r <- routine (const (return EmptyBody)) rout
                        return (routineReq r))
+
+
+checkFeatureMap checkBody fm = do
+  routs <- check fmRoutines (routine checkBody)
+  attrs <- check fmAttrs attr
+  consts <- check fmConsts constt
+  return (FeatureMap routs attrs consts)
+  where
+    check lens f = mapMOf (traverse.exportFeat) f (view lens fm)
 
 someFeature :: (body -> TypingBody ctxBody body')  
               -> SomeFeature body Expr 

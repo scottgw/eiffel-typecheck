@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances, MultiParamTypeClasses, FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Language.Eiffel.TypeCheck.Context where
@@ -62,7 +63,7 @@ tagPos :: a -> TypingBodyExpr body expr (Pos a)
 tagPos a = currentPos >>= return . flip attachPos a
 
 setPosition :: SourcePos -> TypingBody body a -> TypingBody body a
-setPosition p = local (\ c -> c {pos = p})
+setPosition !p = local (\ !c -> c {pos = p})
 
 idErrorRead :: TypingBodyExpr body expr a -> 
                TypeContext body expr -> Either String a
