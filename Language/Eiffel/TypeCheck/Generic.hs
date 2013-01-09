@@ -1,16 +1,20 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Language.Eiffel.TypeCheck.Generic 
        (resolveIFace, unlike, unlikeType, updateGeneric, updateGenerics) where
 
-import Control.Applicative
+import           Control.Applicative
 
-import Language.Eiffel.TypeCheck.Context
+import qualified Data.Text as Text
+import           Data.Text (Text)
+
+import           Language.Eiffel.TypeCheck.Context
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
 
-import Language.Eiffel.Syntax
-import Language.Eiffel.Util
-import Language.Eiffel.Position
+import           Language.Eiffel.Syntax
+import           Language.Eiffel.Util
+import           Language.Eiffel.Position
 
-import Util.Monad
+import           Util.Monad
 
 resolveIFace :: Typ -> TypingBody body (AbsClas body Expr)
 resolveIFace t@(ClassType _ ts) = updateGenerics ts `fmap` lookupClass t
@@ -71,7 +75,7 @@ unlikeType curr clas (Like ident) = do
   -- resMb <- lookupFlatFeatEx clas ident
   case (featureResult <$> findSomeFeature clas ident) <|> typeMb of
 --  case typeMb <|> (featureResult <$> resMb) of
-    Nothing -> error $ "unlikeType: can't find " ++ ident ++ 
+    Nothing -> error $ "unlikeType: can't find " ++ Text.unpack ident ++ 
                        " in " ++ show curr -- ++ "," ++ show p
     Just resT -> unlikeType curr clas resT
 unlikeType curr clas (ClassType name gs) = 

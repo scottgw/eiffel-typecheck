@@ -1,17 +1,20 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Language.Eiffel.TypeCheck.TypedExpr where
 
-import Control.Applicative
+import           Control.Applicative
 
-import Data.DeriveTH
-import Data.Binary
+import           Data.DeriveTH
+import           Data.Binary
+import qualified Data.Text as Text
+import           Data.Text (Text)
 
 import qualified Language.Eiffel.Syntax as E 
   (UnPosExpr (..), ROp (..), UnOp (..))
-import Language.Eiffel.Syntax hiding (UnPosExpr (..), ROp (..), UnOp (..))
-import Language.Eiffel.Position
-import Language.Eiffel.Util
+import           Language.Eiffel.Syntax hiding (UnPosExpr (..), ROp (..), UnOp (..))
+import           Language.Eiffel.Position
+import           Language.Eiffel.Util
 
 type TClass = ClasBody TExpr
 type TRoutine = RoutineWithBody TExpr
@@ -36,15 +39,15 @@ binEqOp TildeNeq = RelOp E.TildeNeq NoType
 
 
 data UnPosTExpr 
-  = Call TExpr String [TExpr] Typ
-  | Access TExpr String Typ
-  | Agent TExpr String [TExpr] Typ
+  = Call TExpr Text [TExpr] Typ
+  | Access TExpr Text Typ
+  | Agent TExpr Text [TExpr] Typ
   | Old TExpr
-  | Var String Typ
+  | Var Text Typ
   | EqExpr EqOp TExpr TExpr
-  | CreateExpr Typ String [TExpr]
-  | Attached (Maybe Typ) TExpr (Maybe String)
-  | StaticCall Typ String [TExpr] Typ
+  | CreateExpr Typ Text [TExpr]
+  | Attached (Maybe Typ) TExpr (Maybe Text)
+  | StaticCall Typ Text [TExpr] Typ
   | Tuple [TExpr]
   | ResultVar Typ
   | CurrentVar Typ
@@ -54,7 +57,7 @@ data UnPosTExpr
   | LitType Typ
   | LitArray [TExpr]
   | LitChar Char
-  | LitString String
+  | LitString Text
   | LitInt Integer
   | LitBool Bool
   | LitVoid Typ

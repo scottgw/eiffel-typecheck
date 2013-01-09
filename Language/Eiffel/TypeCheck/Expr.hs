@@ -2,26 +2,28 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Language.Eiffel.TypeCheck.Expr 
        (typeOfExpr, typeOfExprIs, clause, unlikeDecls, flatten) where
 
-import Control.Applicative
-import Control.Monad.Error
-import Control.Monad.Reader
+import           Control.Applicative
+import           Control.Monad.Error
+import           Control.Monad.Reader
 
-import Data.Maybe
+import           Data.Maybe
 import qualified Data.Map as Map
+import qualified Data.Text as Text
+import           Data.Text (Text)
 
-import Language.Eiffel.Syntax
-import Language.Eiffel.Position
-import Language.Eiffel.Util
-
+import           Language.Eiffel.Syntax
+import           Language.Eiffel.Position
+import           Language.Eiffel.Util
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
-import Language.Eiffel.TypeCheck.TypedExpr (TExpr)
-import Language.Eiffel.TypeCheck.BasicTypes
-import Language.Eiffel.TypeCheck.Context
-import Language.Eiffel.TypeCheck.Generic
+import           Language.Eiffel.TypeCheck.TypedExpr (TExpr)
+import           Language.Eiffel.TypeCheck.BasicTypes
+import           Language.Eiffel.TypeCheck.Context
+import           Language.Eiffel.TypeCheck.Generic
 
 import Util.Monad
 
@@ -36,7 +38,7 @@ findAttr' cls name =
 
 -- | Determine whether a given string (for a VarOrCall) is a call or
 -- a local variable of some sort.
-convertVarCall :: String -> TypingBody body (Maybe TExpr)
+convertVarCall :: Text -> TypingBody body (Maybe TExpr)
 convertVarCall name = do
   curr <- current <$> ask
   !flatCls <- flatten curr
@@ -89,7 +91,7 @@ expr (StaticCall typ name args) = do
   flatClas <- flatten typ
   case findFeatureEx flatClas name of
     Nothing -> 
-      throwError (show typ ++ ": does not contain static call " ++ name)
+      throwError (show typ ++ ": does not contain static call " ++ Text.unpack name)
     Just feat-> do 
       args' <- mapM typeOfExpr args
       let argTypes = map declType (featureArgs feat)
@@ -99,7 +101,7 @@ expr (StaticCall typ name args) = do
 expr (VarOrCall s) = do
   exprMb <- convertVarCall s
   c <- currentM
-  maybe (throwError ("TypeCheckc.Expr.expr: Can't resolve " ++ s ++ " from " ++ show c)) return exprMb
+  maybe (throwError ("TypeCheckc.Expr.expr: Can't resolve " ++ Text.unpack s ++ " from " ++ show c)) return exprMb
 
 expr (Attached typeMb attch asMb) = do
   --TODO: Decide if we have to do any checking between typeMb and attch
@@ -133,7 +135,7 @@ expr (BinOpExpr op e1 e2)
     e1' <- typeOfExpr e1
 
     let
-      attLocals :: Maybe Typ -> T.TExpr -> Maybe String ->
+      attLocals :: Maybe Typ -> T.TExpr -> Maybe Text ->
                    TypingBody body a -> TypingBody body a
       attLocals typeMb attch asMb m =
         let attTyp = fromMaybe (T.texpr attch) typeMb
@@ -171,7 +173,7 @@ expr (QualCall trg name args) = do
   flatCls  <- flatten targetType
   
   case findFeatureEx flatCls name of
-    Nothing -> throwError $ "expr.QualCall: " ++ show trg' ++ ": " ++ name ++ show args' ++ show (map featureName $ allRoutines flatCls)
+    Nothing -> throwError $ "expr.QualCall: " ++ show trg' ++ ": " ++ Text.unpack name ++ show args' ++ show (map featureName $ allRoutines flatCls)
     Just feat -> do
       let formArgs = map declType (featureArgs feat)
           res = featureResult feat
@@ -199,7 +201,7 @@ expr (CreateExpr typ name args) = do
   flatCls <- flatten typ
   
   case findFeatureEx flatCls name of
-    Nothing -> throwError $ "expr:CreateExpr no procedure " ++ name
+    Nothing -> throwError $ "expr:CreateExpr no procedure " ++ Text.unpack name
     Just feat -> do
       -- typecheck and cast the arguments if they come from a generic class
       args'   <- mapM typeOfExpr args
@@ -305,7 +307,7 @@ unlikeBody _ _ b = return b
 -- starting at the argument type. The typ where the feature is 
 -- most recently written (ie, closest to the given type in the hierarchy)
 -- is returned if it exists.
-findWritten :: Typ -> String -> TypingBody ctxBody (Maybe Typ)
+findWritten :: Typ -> Text -> TypingBody ctxBody (Maybe Typ)
 findWritten typ name = 
   let go inhrt = do
         let inhtTyp = inheritClass inhrt

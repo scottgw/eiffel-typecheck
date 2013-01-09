@@ -1,21 +1,23 @@
 module Language.Eiffel.TypeCheck.Class 
        (clas, clasM, typeInterfaces, typedPre, runTyping) where
 
-import Control.Applicative
-import Control.Lens
-import Control.Monad.Reader
+import           Control.Applicative
+import           Control.Lens
+import           Control.Monad.Reader
 
-import qualified Data.Map as Map
+import qualified Data.HashMap.Strict as Map
 import qualified Data.Traversable as Trav
+import qualified Data.Text as Text
+import           Data.Text (Text)
 
-import Language.Eiffel.Syntax
-import Language.Eiffel.Position
-import Language.Eiffel.Util
+import           Language.Eiffel.Syntax
+import           Language.Eiffel.Position
+import           Language.Eiffel.Util
 
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
-import Language.Eiffel.TypeCheck.TypedExpr (TStmt, TClass)
-import Language.Eiffel.TypeCheck.Context
-import Language.Eiffel.TypeCheck.Expr
+import           Language.Eiffel.TypeCheck.TypedExpr (TStmt, TClass)
+import           Language.Eiffel.TypeCheck.Context
+import           Language.Eiffel.TypeCheck.Expr
 
 routineStmt :: RoutineBody Expr -> TypingBody body TStmt
 routineStmt = stmt . routineBody
@@ -80,7 +82,7 @@ cType c =
             (map (\ g -> ClassType (genericName g) []) (generics c))
 
 typedPre :: [ClasInterface] -> ClasInterface 
-            -> String -> Either String (Contract T.TExpr)
+            -> Text -> Either String (Contract T.TExpr)
 typedPre cis classInt name = idErrorRead go (mkCtx (cType classInt) cis)
   where Just rout = findFeature classInt name 
         go = routineEnv rout

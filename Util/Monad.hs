@@ -1,25 +1,26 @@
 {-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies #-}
-
+{-# LANGUAGE OverloadedStrings #-}
 module Util.Monad where
 
-import Control.Applicative
-import Control.Monad.Reader
+import           Control.Applicative
+import           Control.Monad.Reader
 
-import qualified  Data.Map as Map
-import Data.Map (Map)
+import qualified Data.HashMap.Strict as Map
+import qualified Data.Text as Text
+import           Data.Text (Text)
 
-import Language.Eiffel.Syntax
-import Language.Eiffel.Util
+import           Language.Eiffel.Syntax
+import           Language.Eiffel.Util
 
 class HasClasEnv r body expr | r -> body, r -> expr where
-    classEnv :: r -> Map String (AbsClas body expr)
+    classEnv :: r -> Map Text (AbsClas body expr)
     update   :: r -> (AbsClas body expr) -> r
 
 class (HasClasEnv r body expr, MonadReader r m) => 
       ClassReader r m body expr | m -> r where
 
 askClassEnv :: ClassReader r m body expr => 
-               m (Map String (AbsClas body expr))
+               m (Map Text (AbsClas body expr))
 askClassEnv = classEnv `liftM` ask
 
 lookupClassM :: ClassReader r m body expr => 
@@ -41,7 +42,7 @@ lookupFeatureM typ name = do
   clas <- lookupClassM typ
   return (findFeature <$> clas <*> pure name)
 
-lookupAttrM :: ClassReader r m body expr => Typ -> String 
+lookupAttrM :: ClassReader r m body expr => Typ -> Text
                -> m (Maybe (Attribute expr))
 lookupAttrM t name = do
   c <- lookupClassM t
@@ -49,10 +50,10 @@ lookupAttrM t name = do
            c' <- c
            findAttrInt c' name)
 
-lookupAttr :: ClassReader r m body expr => Typ -> String -> m (Attribute expr)
+lookupAttr :: ClassReader r m body expr => Typ -> Text -> m (Attribute expr)
 lookupAttr t name 
     = liftM (maybe 
-             (error $ "lookupAttr: can't fine " ++ show t ++ "." ++ name)
+             (error $ "lookupAttr: can't fine " ++ show t ++ "." ++ Text.unpack name)
              id)
       (lookupAttrM t name)
 
@@ -67,7 +68,7 @@ lookupRoutineM t name = do
 -- lookupRoutine :: ClassReader r m body => Typ -> String -> m RoutineI
 lookupRoutine t name 
     = liftM (maybe 
-             (error $ "lookupRoutine: can't fine " ++ show t ++ "." ++ name)
+             (error $ "lookupRoutine: can't fine " ++ show t ++ "." ++ Text.unpack name)
              id)
       (lookupRoutineM t name)
             

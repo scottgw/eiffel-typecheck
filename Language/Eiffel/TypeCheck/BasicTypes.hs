@@ -1,24 +1,26 @@
 {-# LANGUAGE FlexibleContexts #-}
-
+{-# LANGUAGE OverloadedStrings #-}
 module Language.Eiffel.TypeCheck.BasicTypes 
        (guardTypeIs, numericCanBe, conformThrow) where
 
-import Control.Applicative
-import Control.Monad
-import Control.Monad.Error
+import           Control.Applicative
+import           Control.Monad
+import           Control.Monad.Error
 
-import Data.List (find)
+import           Data.List (find)
+import qualified Data.Text as Text
+import           Data.Text (Text)
 
-import Language.Eiffel.Syntax as S
-import Language.Eiffel.Position
-import Language.Eiffel.Util
+import           Language.Eiffel.Syntax as S
+import           Language.Eiffel.Position
+import           Language.Eiffel.Util
 
 import qualified Language.Eiffel.TypeCheck.TypedExpr as T
-import Language.Eiffel.TypeCheck.TypedExpr (TExpr)
-import Language.Eiffel.TypeCheck.Context
-import Language.Eiffel.TypeCheck.Generic
+import           Language.Eiffel.TypeCheck.TypedExpr (TExpr)
+import           Language.Eiffel.TypeCheck.Context
+import           Language.Eiffel.TypeCheck.Generic
 
-import Util.Monad
+import           Util.Monad
 
 numericCanBe (T.LitInt 0) t =
   isIntegerType t || isNaturalType t || isRealType t
